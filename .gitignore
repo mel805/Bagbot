@@ -1,0 +1,70 @@
+# Node modules
+node_modules/
+package-lock.json
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Backups
+*.backup
+*.bak
+backup*/
+BACKUP*/
+*.tar.gz
+
+# PM2
+.pm2/
+
+# Data (keep structure but not data)
+data/
+*.json.backup
+*.json.old
+
+# Archives
+*.zip
+*.rar
+*.7z
+
+# Output
+output/
+dist/
+build/
+
+# Credentials (important!)
+config.json.backup
+credentials*.json
+token*.txt
+
+# Tokens et credentials sensibles
+.env.token
+.env.backup*
+test-token.js
+**/token*.js
+
