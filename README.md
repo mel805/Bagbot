@@ -1,231 +1,205 @@
-# 🎒 Bag Bot - Bot Discord Multi-fonctions
+# 🎮 Bag Bot V2
 
-Bot Discord complet avec système d'économie, niveaux, modération et commandes interactives.
+Bot Discord communautaire complet avec système économique, jeux multiples, modération avancée et dashboard web intégré.
 
-## ✨ Fonctionnalités principales
+[![Discord](https://img.shields.io/badge/Discord-Bot-7289DA?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/your-invite)
+[![Node.js](https://img.shields.io/badge/Node.js-18+-43853D?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
 
-### 💰 Système d'économie
-- Solde et transactions
-- Commandes de travail et de crime
-- Vol entre utilisateurs
-- Boutique intégrée
+## ✨ Fonctionnalités
 
-### 📊 Système de niveaux
-- XP et progression automatique
-- Classement (leaderboard)
-- Rôles de niveaux configurables
+### 🎲 Jeux
+- **UNO** - Jeu de cartes multijoueur avec système de points
+- **Mudae** - Collection de personnages avec wishlist
+- **Chifoumi** - Pierre-papier-ciseaux avec paris
+- **Comptage** - Système de comptage collaboratif avec opérations mathématiques
+- **Pêche** - Mini-jeu de pêche avec récompenses
+
+### 💰 Économie
+- Système de monnaie virtuelle
+- Boutique avec articles personnalisables
+- Système de niveaux et XP
+- Transactions entre membres
+- Classements (top économie, top niveaux)
 
 ### 🛡️ Modération
-- Ban/Unban, Kick, Mute/Unmute
+- Système de sanctions (warn, mute, kick, ban)
+- Logs complets et détaillés
+- Système de quarantaine
 - Purge de messages
-- Système d'avertissements
-- Logs détaillés
+- Gestion des tickets d'assistance
 
-### 🔄 Sauvegardes
-- Sauvegarde manuelle (`/backup`)
-- Sauvegardes automatiques
-- Restauration avec pagination (`/restore`)
-- Support GitHub pour backup distant
+### 🌍 Fonctionnalités sociales
+- Système de localisation avec carte interactive
+- Confessions anonymes
+- Système de relations et interactions RP
+- Commandes d'interaction (calin, kiss, etc.)
 
-### 🎮 Commandes interactives
-- Plus de 60 commandes d'action (câlin, bisou, gifle, etc.)
-- Système de mariage et relations
-- Mini-jeux (action ou vérité, etc.)
-- Commandes personnalisées par serveur
-
-### ⚙️ Configuration
-- Configuration par serveur
-- Système de logs personnalisable
-- Rôles staff configurables
-- Préfixes personnalisés
+### 📊 Dashboard Web
+- Interface web moderne et responsive
+- Gestion des configurations du serveur
+- Visualisation des statistiques
+- Gestion de la boutique
+- Carte des membres avec géolocalisation
+- Lecteur de musique intégré
 
 ## 🚀 Installation
 
 ### Prérequis
-- Node.js 16.x ou supérieur
+- Node.js 18+ 
 - npm ou yarn
-- Un bot Discord (token)
+- Un token Discord Bot
+- PM2 (recommandé pour la production)
 
-### Installation
+### Configuration
 
+1. **Cloner le dépôt**
 ```bash
-# Cloner le dépôt
-git clone https://github.com/votre-username/Bag-bot.git
-cd Bag-bot
+git clone https://github.com/mel805/bagbot.git
+cd bagbot
+```
 
-# Installer les dépendances
+2. **Installer les dépendances**
+```bash
 npm install
+```
 
-# Configurer les variables d'environnement
+3. **Configurer les variables d'environnement**
+```bash
 cp .env.example .env
-# Éditer .env avec vos tokens
+```
 
-# Déployer les commandes Discord
+Éditer le fichier `.env` et ajouter votre token Discord :
+```env
+DISCORD_TOKEN=votre_token_discord_ici
+```
+
+4. **Déployer les commandes**
+```bash
 node deploy-commands.js
+```
 
-# Lancer le bot
+5. **Lancer le bot**
+
+**En développement :**
+```bash
 node src/bot.js
 ```
 
-### Avec PM2 (production)
-
+**En production avec PM2 :**
 ```bash
-# Installer PM2
-npm install -g pm2
-
-# Lancer le bot
-pm2 start src/bot.js --name bot
-
-# Sauvegarder la configuration PM2
-pm2 save
-pm2 startup
+pm2 start ecosystem.config.js
 ```
+
+## 📂 Structure du projet
+
+```
+bagbot/
+├── src/
+│   ├── bot.js                 # Point d'entrée principal du bot
+│   ├── commands/              # Toutes les commandes slash (93 fichiers)
+│   ├── storage/               # Système de persistance des données
+│   ├── music/                 # Gestionnaire de musique
+│   └── utils/                 # Utilitaires et helpers
+├── dashboard-v2/              # Dashboard web
+│   ├── server-v2.js           # Serveur Express du dashboard
+│   ├── index.html             # Interface principale
+│   └── public/                # Assets statiques
+├── uno-cards/                 # Images des cartes UNO
+├── ecosystem.config.js        # Configuration PM2
+└── package.json
+```
+
+## 🎮 Commandes principales
+
+### Jeux
+- `/uno` - Lancer une partie de UNO
+- `/chifoumi` - Jouer à pierre-papier-ciseaux
+- `/pecher` - Aller à la pêche
+
+### Économie
+- `/solde` - Voir votre argent
+- `/boutique` - Accéder à la boutique
+- `/donner` - Donner de l'argent à un membre
+- `/topeconomie` - Classement des plus riches
+
+### Social
+- `/localisation` - Définir votre localisation
+- `/map` - Voir la carte des membres
+- `/proche` - Trouver les membres proches
+
+### Modération
+- `/warn` - Avertir un membre
+- `/mute` - Rendre muet un membre
+- `/kick` - Expulser un membre
+- `/ban` - Bannir un membre
+- `/purge` - Supprimer des messages en masse
+
+## 🖥️ Dashboard
+
+Le dashboard web est accessible par défaut sur le port 3002.
+
+**Fonctionnalités :**
+- 📊 Vue d'ensemble du serveur
+- 👥 Liste des membres avec statistiques
+- 🛒 Gestion de la boutique
+- 🗺️ Carte interactive des localisations
+- 🎵 Lecteur de musique Discord
+- ⚙️ Configuration complète du bot
+
+Pour lancer le dashboard :
+```bash
+node dashboard-v2/server-v2.js
+```
+
+## 🔧 Technologies utilisées
+
+- **Discord.js** v14 - Librairie Discord
+- **Node.js** - Runtime JavaScript
+- **Express** - Serveur web pour le dashboard
+- **Canvas** - Génération d'images dynamiques
+- **PM2** - Process manager
+- **@discordjs/voice** - Support audio Discord
 
 ## 📝 Configuration
 
-### Variables d'environnement (.env)
+Le bot utilise un système de configuration JSON stocké dans `data/config.json`. 
 
-```env
-DISCORD_TOKEN=votre_token_discord
-CLIENT_ID=votre_client_id
-DATA_DIR=/chemin/vers/data
-USE_PG=false
-```
-
-### Structure des données
-
-Le bot stocke ses données dans des fichiers JSON par défaut :
-- `data/config.json` - Configuration des serveurs
-- `data/backups/` - Sauvegardes automatiques et manuelles
-
-## 🎯 Commandes principales
-
-### Économie
-- `/solde` - Voir son solde
-- `/top` - Classement économie/XP
-- `/daily` - Bonus quotidien
-- `/travailler` - Gagner de l'argent
-- `/voler @user` - Tenter de voler
-
-### Modération (Admin/Staff)
-- `/ban @user [raison]` - Bannir un membre
-- `/kick @user [raison]` - Expulser un membre
-- `/mute @user minutes [raison]` - Rendre muet
-- `/purge nombre` - Supprimer des messages
-- `/warn @user [raison]` - Avertir un membre
-
-### Configuration (Admin)
-- `/config` - Configuration du serveur
-- `/setlogs` - Configurer les logs
-- `/backup` - Créer une sauvegarde
-- `/restore` - Restaurer une sauvegarde
-
-### Interactions
-- `/câlin @user` - Faire un câlin
-- `/bisou @user` - Faire un bisou
-- `/gifle @user` - Gifler quelqu'un
-- `/marry @user` - Demander en mariage
-- Et 50+ autres commandes...
-
-## 🏗️ Architecture
-
-```
-Bag-bot/
-├── src/
-│   ├── bot.js              # Point d'entrée principal
-│   ├── commands/           # Commandes séparées (modulaire)
-│   │   ├── backup.js
-│   │   ├── restore.js
-│   │   ├── solde.js
-│   │   └── ...
-│   ├── handlers/           # Gestionnaires
-│   │   └── commandHandler.js
-│   ├── helpers/            # Fonctions utilitaires
-│   │   ├── showRestoreMenu.js
-│   │   ├── listLocalBackups.js
-│   │   └── ...
-│   └── storage/            # Gestion des données
-│       └── jsonStore.js
-├── deploy-commands.js      # Déploiement des commandes Discord
-├── package.json
-└── README.md
-```
-
-## 🔧 Développement
-
-### Ajouter une nouvelle commande
-
-1. Créer un fichier dans `src/commands/`:
-
-```javascript
-// src/commands/macommande.js
-module.exports = {
-  name: 'macommande',
-  description: 'Description de ma commande',
-  
-  async execute(interaction) {
-    await interaction.reply('Hello World!');
-  },
-  
-  // Optionnel: gérer les interactions (boutons, menus)
-  async handleInteraction(interaction) {
-    // ...
-    return true; // ou false si non géré
-  }
-};
-```
-
-2. Redéployer les commandes:
-```bash
-node deploy-commands.js
-```
-
-3. Redémarrer le bot:
-```bash
-pm2 restart bot
-```
-
-## 📦 Sauvegardes
-
-### Types de sauvegardes
-
-- **👤 Manuel** : Créées avec `/backup`
-- **🤖 Auto** : Créées automatiquement toutes les heures
-- **🛡️ Sécurité** : Créées avant chaque restauration
-
-### Restauration
-
-```bash
-/restore
-```
-
-- Navigation par pages (25 sauvegardes/page)
-- Filtrage par type
-- Sauvegarde de sécurité automatique
+Principales options configurables :
+- Système économique (montants, cooldowns)
+- Niveaux et XP
+- Boutique (articles, prix)
+- Logs (webhooks, channels)
+- Modération (rôles, permissions)
 
 ## 🤝 Contribution
 
 Les contributions sont les bienvenues ! N'hésitez pas à :
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
+- Signaler des bugs via les Issues
+- Proposer de nouvelles fonctionnalités
+- Soumettre des Pull Requests
 
-## 📄 Licence
+## 📜 License
 
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
-
-## 👨‍💻 Auteur
-
-Développé avec ❤️ pour la communauté Discord
+Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
 
 ## 🆘 Support
 
 Pour toute question ou problème :
-- Ouvrir une issue sur GitHub
-- Consulter la documentation
+- Ouvrir une [Issue](https://github.com/mel805/bagbot/issues)
+- Rejoindre notre serveur Discord (lien)
 
-## 📊 Changelog
+## 🎯 Roadmap
 
-Voir `CORRECTION_RESTORE.md` pour les dernières corrections apportées au système de restauration.
+- [ ] Système de quêtes journalières
+- [ ] Mini-jeux supplémentaires
+- [ ] Amélioration du système de musique
+- [ ] API REST pour le dashboard
+- [ ] Support multi-langues
+- [ ] Système de badges et achievements
+
+---
+
+**Développé avec ❤️ pour la communauté Discord**
+
+*Dernière mise à jour : Novembre 2025*
