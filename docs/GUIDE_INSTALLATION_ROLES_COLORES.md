@@ -1,14 +1,21 @@
-# 🎨 Guide d'Installation - Rôles Discord Colorés
+# 🎨 Guide d'Installation - Rôles Discord Colorés (Enhanced v2.0)
 
 ## ✨ Ce que fait ce script
 
-Ce script **colore automatiquement** les noms de rôles Discord avec leur couleur configurée, directement dans la page de gestion des rôles (Paramètres du serveur → Rôles).
+Ce script **colore automatiquement** les noms de rôles Discord avec leur couleur configurée **PARTOUT** sur Discord !
+
+### 📍 Fonctionne dans :
+- ✅ **Page de gestion des rôles** (Paramètres → Rôles)
+- ✅ **Profils des membres** (clic droit → Profil)
+- ✅ **Liste des rôles** dans les profils
+- ✅ **Mentions de rôles** (@rôle)
+- ✅ **Sidebar des membres** (sections de rôles)
 
 **Au lieu de :**
 - 🔴 Nom du rôle (petit point coloré)
 
 **Tu auras :**
-- **<span style="color: #ff1744;">🔴 Nom du rôle</span>** (texte entier coloré !)
+- **<span style="color: #ff1744;">🔴 Nom du rôle</span>** (texte entier coloré PARTOUT !)
 
 ---
 
@@ -100,9 +107,12 @@ Choisis ton navigateur et clique sur le lien correspondant :
 
 ### ✅ Ce que fait le script :
 
-- ✨ Colore automatiquement tous les noms de rôles
-- 🔄 Détecte les nouveaux rôles ajoutés
+- ✨ Colore automatiquement tous les noms de rôles **PARTOUT**
+- 🔄 Détecte les nouveaux rôles ajoutés dynamiquement
 - 💡 Ajoute un effet de brillance au survol
+- 👤 Fonctionne dans les **profils des membres**
+- 💬 Améliore les **mentions de rôles**
+- 📋 Colore la **liste des membres** (sidebar)
 - 🎯 Fonctionne sur toutes les pages Discord (discord.com, canary, ptb)
 - ⚡ Léger et rapide
 - 🔒 100% sûr (tout le code est visible et ne modifie que l'affichage)
