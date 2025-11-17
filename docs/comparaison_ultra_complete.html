@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparaison Ultra Complète - Bag Server</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Whitney:wght@400;500;600;700&display=swap');
+        * {margin: 0; padding: 0; box-sizing: border-box;}
+        body {font-family: 'Whitney', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background: #36393f; color: #dcddde;}
+        
+        /* Tabs */
+        .tabs-container {background: #202225; display: flex; justify-content: center; gap: 10px; padding: 15px; border-bottom: 2px solid #40444b; position: sticky; top: 0; z-index: 101;}
+        .tab-button {background: #2f3136; color: #b9bbbe; border: none; padding: 12px 30px; border-radius: 6px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.2s;}
+        .tab-button:hover {background: #40444b; color: #fff;}
+        .tab-button.active {background: #ff1744; color: #fff;}
+        .tab-content {display: none;}
+        .tab-content.active {display: block;}
+        
+        /* Header */
+        .header {background: linear-gradient(135deg, #1a1a1a 0%, #2d1215 100%); padding: 20px; text-align: center; border-bottom: 3px solid #ff1744; box-shadow: 0 2px 10px rgba(255,23,68,0.3);}
+        .header h1 {color: #fff; font-size: 28px; font-weight: 700; margin-bottom: 10px;}
+        .stats-container {display: flex; justify-content: center; gap: 20px; margin-top: 15px; flex-wrap: wrap;}
+        .stat-box {background: #2f3136; padding: 12px 20px; border-radius: 6px; border: 2px solid #40444b; min-width: 160px;}
+        .stat-label {color: #b9bbbe; font-size: 11px; font-weight: 600; text-transform: uppercase; margin-bottom: 5px;}
+        .stat-values {display: flex; gap: 10px; align-items: center; font-size: 18px; font-weight: 700;}
+        .stat-avant {color: #ed4245;} .stat-apres {color: #ff1744;} .stat-gain {color: #ff1744; font-size: 14px;}
+        
+        /* Comparison */
+        .comparison-wrapper {display: flex; width: 100%; height: calc(100vh - 260px); position: relative;}
+        .discord-sidebar {flex: 1; background: #2f3136; overflow-y: auto; padding: 15px 8px;}
+        .discord-sidebar.avant {border-right: 3px solid #ed4245;}
+        .discord-sidebar.apres {border-left: 3px solid #ff1744; background: #2a2528;}
+        .discord-sidebar::-webkit-scrollbar {width: 8px;}
+        .discord-sidebar::-webkit-scrollbar-track {background: #2f3136;}
+        .discord-sidebar::-webkit-scrollbar-thumb {background: #202225; border-radius: 4px;}
+        .sidebar-header {padding: 12px; border-radius: 6px; margin-bottom: 15px; text-align: center; font-weight: 700; font-size: 20px; color: #fff; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 10px rgba(0,0,0,0.4);}
+        .avant-header {background: linear-gradient(135deg, #ed4245 0%, #c73235 100%);}
+        .apres-header {background: linear-gradient(135deg, #ff1744 0%, #c2185b 100%);}
+        .server-name {background: #36393f; padding: 12px; border-bottom: 1px solid #202225; font-weight: 600; font-size: 14px; margin-bottom: 10px;}
+        
+        /* Categories & Channels */
+        .category {margin: 15px 0 8px 0;}
+        .category-name {color: #96989d; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 8px; margin-bottom: 3px; display: flex; align-items: center;}
+        .category-icon {width: 10px; height: 10px; margin-right: 4px;}
+        .channel {display: flex; align-items: center; padding: 5px 8px; margin: 1px 0; border-radius: 4px; color: #96989d; font-size: 15px; font-weight: 500; transition: all 0.1s ease;}
+        .channel:hover {background: #393c43; color: #dcddde;}
+        .apres .channel:hover {background: #3d2a2e; color: #ff9eb5;}
+        .channel-icon {margin-right: 6px; font-size: 18px; flex-shrink: 0;}
+        .channel.forum {color: #faa61a;}
+        .channel.forum:hover {color: #fcc456; background: #3d3526;}
+        .forum-badge {background: #faa61a; color: #2f3136; font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 3px; margin-left: auto;}
+        .forum-badge.existing {background: #5865f2;}
+        .channel.voice {color: #8e9297; font-size: 14px;}
+        .channel.voice .channel-icon {color: #8e9297;}
+        .channel.deleted {text-decoration: line-through; color: #ed4245; opacity: 0.5;}
+        .channel.regrouped {color: #faa61a; opacity: 0.6;}
+        .arrow {color: #faa61a; margin-left: auto; font-weight: 700; font-size: 12px;}
+        .note {background: #414449; border-left: 3px solid #5865f2; padding: 8px; margin: 8px; border-radius: 3px; font-size: 11px; color: #dcddde; line-height: 1.4;}
+        .note.success {border-left-color: #ff1744; background: #3d2028;}
+        .note.warning {border-left-color: #faa61a; background: #4a3c2d;}
+        .note.error {border-left-color: #ed4245; background: #4a2d2e;}
+        .note.info {border-left-color: #5865f2; background: #2d3d5c;}
+        .divider {height: 1px; background: #40444b; margin: 12px 0;}
+        .separator {position: absolute; left: 50%; top: 0; bottom: 0; width: 6px; background: linear-gradient(to bottom, #ed4245 0%, #ff1744 50%, #c2185b 100%); transform: translateX(-50%); box-shadow: 0 0 20px rgba(255,23,68,0.5); z-index: 5;}
+        
+        /* Roles */
+        .roles-grid {display: grid; grid-template-columns: 1fr 1fr; gap: 20px; max-width: 1800px; margin: 0 auto; padding: 20px;}
+        .role-column {background: #2f3136; border-radius: 8px; padding: 20px; overflow-y: auto; max-height: calc(100vh - 200px);}
+        .role-column.avant {border: 2px solid #ed4245;}
+        .role-column.apres {border: 2px solid #ff1744; background: #2a2528;}
+        .role-column h2 {color: #fff; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #40444b; font-size: 22px;}
+        .role-item {display: flex; align-items: center; padding: 8px 12px; margin: 4px 0; border-radius: 4px; transition: all 0.15s;}
+        .role-item:hover {background: #393c43;}
+        .apres .role-item:hover {background: #3d2a2e;}
+        .role-color {width: 16px; height: 16px; border-radius: 50%; margin-right: 10px; border: 2px solid #40444b; flex-shrink: 0;}
+        .role-name {flex: 1; font-size: 14px; font-weight: 500; color: #dcddde;}
+        .role-arrow {color: #faa61a; margin: 0 10px; font-weight: 700;}
+        .role-new-name {color: #ff9eb5; font-size: 14px; font-weight: 600;}
+        .role-category-header {background: #40444b; color: #faa61a; padding: 8px 12px; margin: 15px 0 5px 0; border-radius: 4px; font-size: 12px; font-weight: 700; text-transform: uppercase;}
+        
+        @media (max-width: 1200px) {
+            .comparison-wrapper {flex-direction: column; height: auto;}
+            .discord-sidebar.avant {border-right: none; border-bottom: 3px solid #ed4245;}
+            .discord-sidebar.apres {border-left: none; border-top: 3px solid #ff1744;}
+            .separator {display: none;}
+            .roles-grid {grid-template-columns: 1fr;}
+        }
+    </style>
+</head>
+<body>
+    <div class="tabs-container">
+        <button class="tab-button active" onclick="showTab('channels')">📁 CHANNELS & CATÉGORIES</button>
+        <button class="tab-button" onclick="showTab('roles')">🎭 RÔLES</button>
+    </div>
+    
+    <!-- TAB 1: CHANNELS -->
+    <div id="tab-channels" class="tab-content active">
+        <div class="header">
+            <h1>💎 COMPARAISON : Channels + Catégories</h1>
+            <div class="stats-container">
+                <div class="stat-box">
+                    <div class="stat-label">📁 Catégories</div>
+                    <div class="stat-values"><span class="stat-avant">16</span><span>→</span><span class="stat-apres">11</span><span class="stat-gain">-31%</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">💬 Channels</div>
+                    <div class="stat-values"><span class="stat-avant">119</span><span>→</span><span class="stat-apres">43</span><span class="stat-gain">-64%</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">🔥 Forums</div>
+                    <div class="stat-values"><span class="stat-avant">3</span><span>→</span><span class="stat-apres">5</span><span class="stat-gain">+2</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">✅ Pingables</div>
+                    <div class="stat-values"><span class="stat-avant">~30%</span><span>→</span><span class="stat-apres">100%</span><span class="stat-gain">+233%</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="comparison-wrapper" style="position: relative;">
+            <div class="separator"></div>
+            
+            <!-- AVANT -->
+            <div class="discord-sidebar avant">
+                <div class="sidebar-header avant-header">📌 AVANT</div>
+                <div class="server-name">🎮 Bag Server ▼</div>
+                <div class="note info">ℹ️ 16 catégories • 119 channels • 3 forums existants</div>
+                
+                <!-- MODÉRATION -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・MODÉRATION・⟡」</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌟・⟡・moderator-only・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>🛡️・⟡・général-staff・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>🤖・⟡・cmd-bot-staff・⟡</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>📝・⟡・bloc-note・⟡ <span class="forum-badge existing">FORUM</span></div>
+                </div>
+                
+                <!-- SUITES PRIVÉES -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>Suites privées</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥┃suite-alyssa66-#1-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹_the-secret-nest_🌹</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹┃suite-alyssa66-1-txt</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥┃suite-jormungand21-#1-vc</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥┃suite-maximo046-#1-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹┃suite-jormungand21-1-txt</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥┃suite-maximo046-#2-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹suite-royale🌹</div>
+                </div>
+                
+                <!-- BIENVENUE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・BIENVENUE・⟡」</div>
+                    <div class="channel"><span class="channel-icon">#</span>『🏠』・⟡・𝑨𝒓𝒓𝒊𝒗𝒆́𝒆𝒔・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『📜』・⟡・𝑹𝒆́𝒈𝒍𝒆𝒎𝒆𝒏𝒕・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『🛡️』・⟡・𝑹ô𝒍𝒆𝒔-𝑶𝒃𝒍𝒊𝒈𝒂𝒕𝒐𝒊𝒓𝒆𝒔・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『🔞』・⟡・𝑹ô𝒍𝒆𝒔-𝑵𝑺𝐅𝑾・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『𓆩❤𓆪』・⟡・𝑷𝒓é𝒔𝒆𝒏𝒕𝒂𝒕𝒊𝒐𝒏・⟡</div>
+                </div>
+                
+                <!-- GÉNÉRAL -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・GÉNÉRAL・⟡」</div>
+                    <div class="channel"><span class="channel-icon">#</span>『💬』・⟡・𝑫𝒊𝒔𝒄𝒖𝒔𝒔𝒊𝒐𝒏・⟡</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>『❓』・⟡・𝑫é𝒃𝒂𝒕𝑸𝒖𝒆𝒔𝒕𝒊𝒐𝒏・⟡ <span class="forum-badge existing">FORUM</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>『🎶』・⟡・𝑴é𝒅𝒊𝒂𝑴𝒖𝒔𝒊𝒒𝒖𝒆𝑫𝒊𝒗𝒆𝒓𝒔・⟡</div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『😂』・⟡・𝑴ê𝒎𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>『🎨』・⟡・𝑪𝒓é𝒂𝒕𝒊𝒐𝒏・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『📖』・⟡・𝑪𝒊𝒕𝒂𝒕𝒊𝒐𝒏𝑹é𝒄𝒊𝒕・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『🗣️』・⟡・𝑪𝒐𝒏𝒇𝒆𝒔𝒔𝒊𝒐𝒏・⟡</div>
+                </div>
+                
+                <!-- LA COMMU -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・LA COMMU・⟡」</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>🎯・⟡・𝑽𝒐𝒔-𝑯𝒐𝒃𝒃𝒊𝒆𝒔・⟡ <span class="forum-badge existing">FORUM</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>🛒・⟡・𝑩𝒐𝒖𝒕𝒊𝒒𝒖𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>✉️・⟡・𝑫𝒆𝒎𝒂𝒏𝒅𝒆-𝒅𝒆-𝑴𝒑・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>📊・⟡・𝑵𝒊𝒗𝒆𝒂𝒖𝒙・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>📋・⟡・𝑺𝒐𝒏𝒅𝒂𝒈𝒆・⟡</div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>🌍・⟡・𝑸𝒖𝒊-𝒆𝒔𝒕-𝒅𝒐𝒖̀・⟡ <span class="arrow">→</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>🎮・⟡・𝑱𝒆𝒖𝒙-𝑩𝒐𝒕・⟡</div>
+                </div>
+                
+                <!-- LA VITRINE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・LA VITRINE・⟡」</div>
+                    <div class="channel"><span class="channel-icon">#</span>『🤳』・⟡・𝑺𝒆𝒍𝒇𝒊𝒆・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>『👗』・⟡・𝑶𝒖𝒕𝒇𝒊𝒕・⟡</div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『💃』・⟡・𝑻𝒆𝒂𝒔𝒆-𝑭𝒆𝒎𝒎𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『🕺』・⟡・𝑻𝒆𝒂𝒔𝒆-𝑯𝒐𝒎𝒎𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『🌈』・⟡・𝑻𝒆𝒂𝒔𝒆-𝑨𝒖𝒕𝒓𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『💄』・⟡・𝑵𝒖𝒅𝒆𝒔-𝑭𝒆𝒎𝒎𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『👔』・⟡・𝑵𝒖𝒅𝒆𝒔-𝑯𝒐𝒎𝒎𝒆・⟡ <span class="arrow">→</span></div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>『🧢』・⟡・𝑵𝒖𝒅𝒆𝒔-𝑨𝒖𝒕𝒓𝒆・⟡ <span class="arrow">→</span></div>
+                </div>
+                
+                <!-- MONDE DE LA NUIT -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・LE MONDE DE LA NUIT・⟡」</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔥・⟡・𝑯𝒐𝒕-𝑷𝒍𝒂𝒄𝒆・⟡</div>
+                    <div class="channel regrouped"><span class="channel-icon">#</span>🎥・⟡・𝑴𝒆𝒅𝒊𝒂・⟡ <span class="arrow">→</span></div>
+                    <div class="channel deleted"><span class="channel-icon">#</span>💦・⟡・𝑮é𝒎𝒊𝒔𝒔𝒆𝒎𝒆𝒏𝒕・⟡</div>
+                    <div class="channel deleted"><span class="channel-icon">#</span>🧸・⟡・𝑽𝒐𝒔-𝑻𝒐𝒚𝒔・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>🤖・⟡・𝑩𝒐𝒕-𝑵𝑺𝐹𝑾・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>💭・⟡・𝑭𝒂𝒏𝒕𝒂𝒔𝒎𝒆・⟡</div>
+                    <div class="channel deleted"><span class="channel-icon">#</span>🔞・⟡・𝑳𝒆𝒔-𝑫é𝒇𝒊𝒔-𝑵𝑺𝐹𝑾・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔞・⟡・mot-à-mot・⟡</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔞・⟡・𝑨𝒄𝒕𝒊𝒐𝒏-𝑽é𝒓𝒊𝒕é・⟡</div>
+                </div>
+                
+                <!-- NSFW -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・NSFW・⟡」</div>
+                    <div class="note error">🚫 24 channels NSFW → transformés en FORUM</div>
+                </div>
+                
+                <!-- RP/ERP -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>「⟡・RP/ERP・⟡」</div>
+                    <div class="note error">🚫 6 channels → catégorie SUPPRIMÉE</div>
+                </div>
+                
+                <!-- QUARANTAINE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>🔒 QUARANTAINE</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔇・vocal-quarantaine</div>
+                </div>
+                
+                <div class="divider"></div>
+                <div class="note warning">⚠️ Noms complexes = Non pingables<br>⚠️ 119 channels = Trop de scroll</div>
+            </div>
+            
+            <!-- APRÈS -->
+            <div class="discord-sidebar apres">
+                <div class="sidebar-header apres-header">💎 APRÈS - Style Sensuel</div>
+                <div class="server-name">🎮 Bag Server ▼</div>
+                <div class="note success">✅ 11 catégories • 43 channels • 5 forums (3+2)</div>
+                
+                <!-- MODÉRATION -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>❤️‍🔥 ▂▂▂▂▂ ♥ MODÉRATION ♥ ▂▂▂▂▂ ❤️‍🔥</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌟 │ moderator-only</div>
+                    <div class="channel"><span class="channel-icon">#</span>🛡️ │ general-staff</div>
+                    <div class="channel"><span class="channel-icon">#</span>🤖 │ cmd-bot-staff</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>📝 │ bloc-note <span class="forum-badge existing">FORUM</span></div>
+                </div>
+                
+                <!-- SUITES PRIVÉES -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>💎 ▂▂▂▂▂ ♥ SUITES VIP ♥ ▂▂▂▂▂ 💎</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥 │ suite-alyssa66-1-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹 │ suite-alyssa66-1-txt</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥 │ suite-jormungand21-1-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹 │ suite-jormungand21-1-txt</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥 │ suite-maximo046-1-vc</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔥 │ suite-maximo046-2-vc</div>
+                    <div class="channel"><span class="channel-icon">#</span>🌹 │ suite-royale</div>
+                    <div class="channel"><span class="channel-icon">#</span>💕 │ the-secret-nest</div>
+                </div>
+                <div class="note success">✅ Noms simplifiés et pingables</div>
+                
+                <!-- BIENVENUE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>❤️‍🔥 ▂▂▂▂▂ ♥ ARRIVÉE ♥ ▂▂▂▂▂ ❤️‍🔥</div>
+                    <div class="channel"><span class="channel-icon">#</span>🏠 │ arrivees</div>
+                    <div class="channel"><span class="channel-icon">#</span>📜 │ reglement</div>
+                    <div class="channel"><span class="channel-icon">#</span>🛡️ │ roles-obligatoires</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔞 │ roles-nsfw</div>
+                    <div class="channel"><span class="channel-icon">#</span>❤️ │ presentation</div>
+                </div>
+                
+                <!-- GÉNÉRAL -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>❤️‍🔥 ▂▂▂▂▂ ♥ DISCUSSION ♥ ▂▂▂▂▂ ❤️‍🔥</div>
+                    <div class="channel"><span class="channel-icon">#</span>💬 │ discussion</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>❓ │ debat-question <span class="forum-badge existing">FORUM</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>🎵 │ medias-memes</div>
+                    <div class="channel"><span class="channel-icon">#</span>🎨 │ creation</div>
+                    <div class="channel"><span class="channel-icon">#</span>📖 │ citation-recit</div>
+                    <div class="channel"><span class="channel-icon">#</span>🗣️ │ confession</div>
+                </div>
+                <div class="note success">✅ 7→6 channels (meme regroupé)</div>
+                
+                <!-- LA COMMU -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>❤️‍🔥 ▂▂▂▂▂ ♥ COMMUNAUTÉ ♥ ▂▂▂▂▂ ❤️‍🔥</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>🎯 │ vos-hobbies <span class="forum-badge existing">FORUM</span></div>
+                    <div class="channel"><span class="channel-icon">#</span>🛒 │ boutique</div>
+                    <div class="channel"><span class="channel-icon">#</span>✉️ │ demande-de-mp</div>
+                    <div class="channel"><span class="channel-icon">#</span>📊 │ niveaux</div>
+                    <div class="channel"><span class="channel-icon">#</span>📋 │ sondage</div>
+                    <div class="channel"><span class="channel-icon">#</span>🎮 │ jeu-bot</div>
+                </div>
+                <div class="note success">✅ 7→6 channels (géoloc+boutique)</div>
+                
+                <!-- LA VITRINE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>💎 ▂▂▂▂▂ ♥ VITRINE ♥ ▂▂▂▂▂ 💎</div>
+                    <div class="channel"><span class="channel-icon">#</span>🤳 │ selfies-sexy</div>
+                    <div class="channel"><span class="channel-icon">#</span>👗 │ outfit</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>💋 │ vitrine-sensuelle <span class="forum-badge">FORUM</span></div>
+                </div>
+                <div class="note success">✅ 8→3 (6 channels en 1 forum)<br>Tags: 💃 Tease • 🔥 Nudes • 💄 Femme • 👔 Homme • 🧢 Autre</div>
+                
+                <!-- MONDE DE LA NUIT -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>🌙 ▂▂▂▂▂ ♥ NUIT CHAUDE ♥ ▂▂▂▂▂ 🌙</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔥 │ hot-place</div>
+                    <div class="channel"><span class="channel-icon">#</span>🤖 │ bot-nsfw</div>
+                    <div class="channel"><span class="channel-icon">#</span>💭 │ fantasmes</div>
+                    <div class="channel"><span class="channel-icon">#</span>🔞 │ action-verite-nsfw</div>
+                    <div class="channel forum"><span class="channel-icon">💬</span>💋 │ galerie-passion <span class="forum-badge">FORUM</span></div>
+                </div>
+                <div class="note success">✅ 33→5 (24 NSFW+media en 1 forum)<br>Tags: Amateur, Asian, BDSM, Boobs, Dick, Fuck...</div>
+                
+                <!-- QUARANTAINE -->
+                <div class="category">
+                    <div class="category-name"><span class="category-icon">▼</span>🔒 ▂▂▂▂▂ ♥ QUARANTAINE ♥ ▂▂▂▂▂ 🔒</div>
+                    <div class="channel voice"><span class="channel-icon">🔊</span>🔇 │ vocal-quarantaine</div>
+                </div>
+                
+                <div class="divider"></div>
+                <div class="note success"><strong>🎯 RÉSULTAT:</strong><br>✅ -64% channels<br>✅ -31% catégories<br>✅ 5 forums<br>✅ 100% pingable<br>✅ Style sensuel ❤️‍🔥💎🌙</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- TAB 2: RÔLES -->
+    <div id="tab-roles" class="tab-content">
+        <div class="header">
+            <h1>🎭 COMPARAISON : Rôles du Serveur</h1>
+            <div class="stats-container">
+                <div class="stat-box">
+                    <div class="stat-label">🎭 Rôles totaux</div>
+                    <div class="stat-values"><span class="stat-apres">~80</span></div>
+                </div>
+                <div class="stat-box">
+                    <div class="stat-label">✅ Amélioration</div>
+                    <div class="stat-values"><span class="stat-apres">100%</span><span class="stat-gain">Noms simples</span></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="roles-grid">
+            <!-- AVANT -->
+            <div class="role-column avant">
+                <h2>📌 AVANT - Rôles Actuels</h2>
+                
+                <div class="role-category-header">👑 ADMIN / STAFF</div>
+                <div class="role-item"><div class="role-color" style="background: #eaa237;"></div><span class="role-name">Fondateur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #000000;"></div><span class="role-name">Admin</span></div>
+                <div class="role-item"><div class="role-color" style="background: #ff0000;"></div><span class="role-name">BOT SERVEUR</span></div>
+                <div class="role-item"><div class="role-color" style="background: #99aab5;"></div><span class="role-name">Developpeur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #206694;"></div><span class="role-name">Modérateur</span></div>
+                
+                <div class="role-category-header">💕 IDENTITÉ</div>
+                <div class="role-item"><div class="role-color" style="background: #ff5dd6;"></div><span class="role-name">Femme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #4cadd0;"></div><span class="role-name">Homme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #826bc2;"></div><span class="role-name">autres</span></div>
+                
+                <div class="role-category-header">💬 PRONOMS</div>
+                <div class="role-item"><div class="role-color" style="background: #000000;"></div><span class="role-name">Pronom elle</span></div>
+                <div class="role-item"><div class="role-color" style="background: #000000;"></div><span class="role-name">Pronom il</span></div>
+                
+                <div class="role-category-header">💑 STATUT RELATIONNEL</div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">celibataire</span></div>
+                <div class="role-item"><div class="role-color" style="background: #43586d;"></div><span class="role-name">en couple</span></div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">complique</span></div>
+                <div class="role-item"><div class="role-color" style="background: #40707e;"></div><span class="role-name">en flirt</span></div>
+                
+                <div class="role-category-header">📩 MP / DM</div>
+                <div class="role-item"><div class="role-color" style="background: #ad8cab;"></div><span class="role-name">ouvert</span></div>
+                <div class="role-item"><div class="role-color" style="background: #b992b3;"></div><span class="role-name">sur demande</span></div>
+                <div class="role-item"><div class="role-color" style="background: #c395c2;"></div><span class="role-name">fermer</span></div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">Privé</span></div>
+                
+                <div class="role-category-header">🔥 NUDES</div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">nude</span></div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">nude si affinité</span></div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">ne nude pas</span></div>
+                
+                <div class="role-category-header">🌈 ORIENTATION</div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">hetero</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">Homosexuel</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">bisexuelle</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">pansexuel</span></div>
+                
+                <div class="role-category-header">🔞 PRATIQUES NSFW</div>
+                <div class="role-item"><div class="role-color" style="background: #ddd9d9;"></div><span class="role-name">erp</span></div>
+                <div class="role-item"><div class="role-color" style="background: #680709;"></div><span class="role-name">anal</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6e0a0a;"></div><span class="role-name">seins</span></div>
+                <div class="role-item"><div class="role-color" style="background: #640606;"></div><span class="role-name">bondage</span></div>
+                <div class="role-item"><div class="role-color" style="background: #580c0c;"></div><span class="role-name">bdsm</span></div>
+                <div class="role-item"><div class="role-color" style="background: #660909;"></div><span class="role-name">vanille</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690a0a;"></div><span class="role-name">actif</span></div>
+                <div class="role-item"><div class="role-color" style="background: #610909;"></div><span class="role-name">passif</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6e0f0f;"></div><span class="role-name">versatile</span></div>
+                <div class="role-item"><div class="role-color" style="background: #610b0b;"></div><span class="role-name">pet play</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6b0e0e;"></div><span class="role-name">public</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6b0c0c;"></div><span class="role-name">lingerie</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6d0a0a;"></div><span class="role-name">voyeurisme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #631111;"></div><span class="role-name">morsure</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690b0b;"></div><span class="role-name">douleur legere</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690e0e;"></div><span class="role-name">brat</span></div>
+                <div class="role-item"><div class="role-color" style="background: #720d0d;"></div><span class="role-name">exhibition</span></div>
+                
+                <div class="note warning" style="margin-top: 20px;">⚠️ Noms incohérents<br>⚠️ Majuscules/minuscules mélangées</div>
+            </div>
+            
+            <!-- APRÈS -->
+            <div class="role-column apres">
+                <h2>💎 APRÈS - Rôles Stylés</h2>
+                
+                <div class="role-category-header">👑 ADMIN / STAFF</div>
+                <div class="role-item"><div class="role-color" style="background: #eaa237;"></div><span class="role-name">Fondateur <span class="role-arrow">→</span></span><span class="role-new-name">👑 │ fondateur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #000000;"></div><span class="role-name">Admin <span class="role-arrow">→</span></span><span class="role-new-name">⚜️ │ admin</span></div>
+                <div class="role-item"><div class="role-color" style="background: #ff0000;"></div><span class="role-name">BOT SERVEUR <span class="role-arrow">→</span></span><span class="role-new-name">🤖 │ bot-serveur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #99aab5;"></div><span class="role-name">Developpeur <span class="role-arrow">→</span></span><span class="role-new-name">💻 │ developpeur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #206694;"></div><span class="role-name">Modérateur <span class="role-arrow">→</span></span><span class="role-new-name">🛡️ │ moderateur</span></div>
+                
+                <div class="role-category-header">💕 IDENTITÉ</div>
+                <div class="role-item"><div class="role-color" style="background: #ff5dd6;"></div><span class="role-name">Femme <span class="role-arrow">→</span></span><span class="role-new-name">💋 │ femme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #4cadd0;"></div><span class="role-name">Homme <span class="role-arrow">→</span></span><span class="role-new-name">🔥 │ homme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #826bc2;"></div><span class="role-name">autres <span class="role-arrow">→</span></span><span class="role-new-name">✨ │ autre</span></div>
+                
+                <div class="role-category-header">💬 PRONOMS</div>
+                <div class="role-item"><div class="role-color" style="background: #ff5dd6;"></div><span class="role-name">Pronom elle <span class="role-arrow">→</span></span><span class="role-new-name">💕 │ elle</span></div>
+                <div class="role-item"><div class="role-color" style="background: #4cadd0;"></div><span class="role-name">Pronom il <span class="role-arrow">→</span></span><span class="role-new-name">💪 │ il</span></div>
+                
+                <div class="role-category-header">💑 STATUT RELATIONNEL</div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">celibataire <span class="role-arrow">→</span></span><span class="role-new-name">💔 │ celibataire</span></div>
+                <div class="role-item"><div class="role-color" style="background: #43586d;"></div><span class="role-name">en couple <span class="role-arrow">→</span></span><span class="role-new-name">💑 │ en-couple</span></div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">complique <span class="role-arrow">→</span></span><span class="role-new-name">💫 │ complique</span></div>
+                <div class="role-item"><div class="role-color" style="background: #40707e;"></div><span class="role-name">en flirt <span class="role-arrow">→</span></span><span class="role-new-name">😏 │ en-flirt</span></div>
+                
+                <div class="role-category-header">📩 MP / DM</div>
+                <div class="role-item"><div class="role-color" style="background: #ad8cab;"></div><span class="role-name">ouvert <span class="role-arrow">→</span></span><span class="role-new-name">✅ │ mp-ouvert</span></div>
+                <div class="role-item"><div class="role-color" style="background: #b992b3;"></div><span class="role-name">sur demande <span class="role-arrow">→</span></span><span class="role-new-name">💬 │ mp-demande</span></div>
+                <div class="role-item"><div class="role-color" style="background: #c395c2;"></div><span class="role-name">fermer <span class="role-arrow">→</span></span><span class="role-new-name">🚫 │ mp-ferme</span></div>
+                <div class="role-item"><div class="role-color" style="background: #3e566e;"></div><span class="role-name">Privé <span class="role-arrow">→</span></span><span class="role-new-name">🔒 │ mp-prive</span></div>
+                
+                <div class="role-category-header">🔥 NUDES</div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">nude <span class="role-arrow">→</span></span><span class="role-new-name">🔥 │ nude</span></div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">nude si affinité <span class="role-arrow">→</span></span><span class="role-new-name">💕 │ nude-affinite</span></div>
+                <div class="role-item"><div class="role-color" style="background: #992d22;"></div><span class="role-name">ne nude pas <span class="role-arrow">→</span></span><span class="role-new-name">🚫 │ pas-nude</span></div>
+                
+                <div class="role-category-header">🌈 ORIENTATION</div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">hetero <span class="role-arrow">→</span></span><span class="role-new-name">💗 │ hetero</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">Homosexuel <span class="role-arrow">→</span></span><span class="role-new-name">🌈 │ homo</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">bisexuelle <span class="role-arrow">→</span></span><span class="role-new-name">💜 │ bi</span></div>
+                <div class="role-item"><div class="role-color" style="background: #1abc9c;"></div><span class="role-name">pansexuel <span class="role-arrow">→</span></span><span class="role-new-name">🌺 │ pan</span></div>
+                
+                <div class="role-category-header">🔞 PRATIQUES NSFW</div>
+                <div class="role-item"><div class="role-color" style="background: #ddd9d9;"></div><span class="role-name">erp <span class="role-arrow">→</span></span><span class="role-new-name">🎭 │ erp</span></div>
+                <div class="role-item"><div class="role-color" style="background: #680709;"></div><span class="role-name">anal <span class="role-arrow">→</span></span><span class="role-new-name">🍑 │ anal</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6e0a0a;"></div><span class="role-name">seins <span class="role-arrow">→</span></span><span class="role-new-name">🍒 │ seins</span></div>
+                <div class="role-item"><div class="role-color" style="background: #640606;"></div><span class="role-name">bondage <span class="role-arrow">→</span></span><span class="role-new-name">⛓️ │ bondage</span></div>
+                <div class="role-item"><div class="role-color" style="background: #580c0c;"></div><span class="role-name">bdsm <span class="role-arrow">→</span></span><span class="role-new-name">🔗 │ bdsm</span></div>
+                <div class="role-item"><div class="role-color" style="background: #660909;"></div><span class="role-name">vanille <span class="role-arrow">→</span></span><span class="role-new-name">🍦 │ vanille</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690a0a;"></div><span class="role-name">actif <span class="role-arrow">→</span></span><span class="role-new-name">🔝 │ actif</span></div>
+                <div class="role-item"><div class="role-color" style="background: #610909;"></div><span class="role-name">passif <span class="role-arrow">→</span></span><span class="role-new-name">🔽 │ passif</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6e0f0f;"></div><span class="role-name">versatile <span class="role-arrow">→</span></span><span class="role-new-name">🔄 │ versatile</span></div>
+                <div class="role-item"><div class="role-color" style="background: #610b0b;"></div><span class="role-name">pet play <span class="role-arrow">→</span></span><span class="role-new-name">🐾 │ pet-play</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6b0e0e;"></div><span class="role-name">public <span class="role-arrow">→</span></span><span class="role-new-name">🌳 │ public</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6b0c0c;"></div><span class="role-name">lingerie <span class="role-arrow">→</span></span><span class="role-new-name">👙 │ lingerie</span></div>
+                <div class="role-item"><div class="role-color" style="background: #6d0a0a;"></div><span class="role-name">voyeurisme <span class="role-arrow">→</span></span><span class="role-new-name">👀 │ voyeur</span></div>
+                <div class="role-item"><div class="role-color" style="background: #631111;"></div><span class="role-name">morsure <span class="role-arrow">→</span></span><span class="role-new-name">🦷 │ morsure</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690b0b;"></div><span class="role-name">douleur legere <span class="role-arrow">→</span></span><span class="role-new-name">⚡ │ douleur-legere</span></div>
+                <div class="role-item"><div class="role-color" style="background: #690e0e;"></div><span class="role-name">brat <span class="role-arrow">→</span></span><span class="role-new-name">😈 │ brat</span></div>
+                <div class="role-item"><div class="role-color" style="background: #720d0d;"></div><span class="role-name">exhibition <span class="role-arrow">→</span></span><span class="role-new-name">📸 │ exhibition</span></div>
+                
+                <div class="note success" style="margin-top: 20px;"><strong>✅ AMÉLIORA TIONS:</strong><br>✅ Format cohérent: emoji │ nom<br>✅ Tirets pour espaces<br>✅ Minuscules<br>✅ Emojis sensuels</div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>
