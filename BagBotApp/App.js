@@ -16,6 +16,8 @@ import LoginScreen from './screens/LoginScreen';
 import ShopScreen from './screens/ShopScreen';
 import InactivityScreen from './screens/InactivityScreen';
 import TicketsScreen from './screens/TicketsScreen';
+import StaffChatScreen from './screens/StaffChatScreen';
+import ServerMonitorScreen from './screens/ServerMonitorScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -41,10 +43,10 @@ function MainTabs() {
 
           if (route.name === 'Dashboard') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Économie') {
-            iconName = focused ? 'cash' : 'cash-outline';
-          } else if (route.name === 'Musique') {
-            iconName = focused ? 'musical-notes' : 'musical-notes-outline';
+          } else if (route.name === 'Chat') {
+            iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+          } else if (route.name === 'Serveur') {
+            iconName = focused ? 'server' : 'server-outline';
           } else if (route.name === 'Jeux') {
             iconName = focused ? 'game-controller' : 'game-controller-outline';
           } else if (route.name === 'Config') {
@@ -78,14 +80,14 @@ function MainTabs() {
         options={{ title: '🏠 Dashboard' }}
       />
       <Tab.Screen 
-        name="Économie" 
-        component={EconomyScreen}
-        options={{ title: '💰 Économie' }}
+        name="Chat" 
+        component={StaffChatScreen}
+        options={{ title: '💬 Chat Staff' }}
       />
       <Tab.Screen 
-        name="Musique" 
-        component={MusicScreen}
-        options={{ title: '🎵 Musique' }}
+        name="Serveur" 
+        component={ServerMonitorScreen}
+        options={{ title: '📊 Serveur' }}
       />
       <Tab.Screen 
         name="Jeux" 
@@ -119,6 +121,26 @@ export default function App() {
             options={{ 
               headerShown: true,
               title: '🛒 Boutique',
+              headerStyle: { backgroundColor: '#1a1a1a' },
+              headerTintColor: '#ffffff',
+            }}
+          />
+          <Stack.Screen 
+            name="Economy" 
+            component={EconomyScreen}
+            options={{ 
+              headerShown: true,
+              title: '💰 Économie',
+              headerStyle: { backgroundColor: '#1a1a1a' },
+              headerTintColor: '#ffffff',
+            }}
+          />
+          <Stack.Screen 
+            name="Music" 
+            component={MusicScreen}
+            options={{ 
+              headerShown: true,
+              title: '🎵 Musique',
               headerStyle: { backgroundColor: '#1a1a1a' },
               headerTintColor: '#ffffff',
             }}

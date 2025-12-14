@@ -216,6 +216,52 @@ class ApiService {
     const response = await this.client.post('/api/inactivity/add-all-members');
     return response.data;
   }
+
+  // ========== STAFF CHAT ==========
+  async getStaffChat() {
+    const response = await this.client.get('/api/staff-chat');
+    return response.data;
+  }
+
+  async sendStaffMessage(username, message) {
+    const response = await this.client.post('/api/staff-chat', {
+      username,
+      message,
+      timestamp: Date.now(),
+    });
+    return response.data;
+  }
+
+  async clearStaffChat() {
+    const response = await this.client.delete('/api/staff-chat');
+    return response.data;
+  }
+
+  // ========== SERVER MONITORING ==========
+  async getServerStats() {
+    const response = await this.client.get('/api/server/stats');
+    return response.data;
+  }
+
+  async restartDashboard() {
+    const response = await this.client.post('/api/server/restart/dashboard');
+    return response.data;
+  }
+
+  async restartBot() {
+    const response = await this.client.post('/api/server/restart/bot');
+    return response.data;
+  }
+
+  async clearServerCache() {
+    const response = await this.client.post('/api/server/clear-cache');
+    return response.data;
+  }
+
+  async rebootServer() {
+    const response = await this.client.post('/api/server/reboot');
+    return response.data;
+  }
 }
 
 export default new ApiService();

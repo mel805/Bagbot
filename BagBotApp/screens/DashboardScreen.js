@@ -123,6 +123,24 @@ export default function DashboardScreen({ navigation }) {
         
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={() => navigation.navigate('Economy')}
+        >
+          <Ionicons name="cash" size={24} color="#ffffff" />
+          <Text style={styles.actionButtonText}>Économie</Text>
+          <Ionicons name="chevron-forward" size={24} color="#888888" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => navigation.navigate('Music')}
+        >
+          <Ionicons name="musical-notes" size={24} color="#ffffff" />
+          <Text style={styles.actionButtonText}>Musique</Text>
+          <Ionicons name="chevron-forward" size={24} color="#888888" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={() => navigation.navigate('Shop')}
         >
           <Ionicons name="cart" size={24} color="#ffffff" />
