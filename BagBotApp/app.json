@@ -28,6 +28,8 @@
       "package": "com.bagbot.dashboard",
       "permissions": [
         "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE"
       ]
     },
@@ -39,6 +41,12 @@
         "projectId": "00221514-87b9-4908-8fc8-bc6e4f004039"
       }
     },
-    "owner": "jormungand"
+    "owner": "jormungand",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/00221514-87b9-4908-8fc8-bc6e4f004039"
+    }
   }
 }
