@@ -36,8 +36,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "bagbot-dashboard"
+        "projectId": "00221514-87b9-4908-8fc8-bc6e4f004039"
       }
-    }
+    },
+    "owner": "jormungand"
   }
 }
