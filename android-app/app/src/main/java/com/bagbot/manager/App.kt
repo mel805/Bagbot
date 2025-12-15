@@ -90,6 +90,23 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     return Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), el)
   }
 
+  fun saveFullConfig(newConfigJson: String) {
+    scope.launch {
+      busy.value = true
+      try {
+        JsonUtil.parseObject(newConfigJson)
+        api.putJson("/api/configs", newConfigJson)
+        configJson.value = newConfigJson
+        configEdit.value = newConfigJson
+        snackbar.showSnackbar("Config sauvegardée")
+      } catch (e: Exception) {
+        snackbar.showSnackbar("Erreur: ${e.message}")
+      } finally {
+        busy.value = false
+      }
+    }
+  }
+
   fun openSection(key: String) {
     val cfg = currentConfigObject() ?: run {
       scope.launch { snackbar.showSnackbar("Config non chargée") }
@@ -149,23 +166,6 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
         statusJson.value = api.getJson("/api/bot/status")
         configJson.value = api.getJson("/api/configs")
         configEdit.value = configJson.value ?: ""
-      } catch (e: Exception) {
-        snackbar.showSnackbar("Erreur: ${e.message}")
-      } finally {
-        busy.value = false
-      }
-    }
-  }
-
-  fun saveFullConfig(newConfigJson: String) {
-    scope.launch {
-      busy.value = true
-      try {
-        JsonUtil.parseObject(newConfigJson)
-        api.putJson("/api/configs", newConfigJson)
-        configJson.value = newConfigJson
-        configEdit.value = newConfigJson
-        snackbar.showSnackbar("Config sauvegardée")
       } catch (e: Exception) {
         snackbar.showSnackbar("Erreur: ${e.message}")
       } finally {
