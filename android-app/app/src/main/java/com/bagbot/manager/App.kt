@@ -69,6 +69,16 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 
   val json = remember { Json { ignoreUnknownKeys = true } }
 
+  fun JsonObject.stringOrNull(key: String): String? {
+    val el = this[key] ?: return null
+    return try {
+      val p = el.jsonPrimitive
+      if (p is JsonPrimitive && p.isString) p.content else p.content
+    } catch (_: Exception) {
+      null
+    }
+  }
+
   fun currentConfigObject(): JsonObject? {
     val s = configJson.value ?: return null
     return try { json.parseToJsonElement(s).jsonObject } catch (_: Exception) { null }
@@ -274,8 +284,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             val currency = economy?.get("currency")?.jsonObject
             val settings = economy?.get("settings")?.jsonObject
 
-            val currencyName = remember(configJson.value) { mutableStateOf(currency?.get("name")?.jsonPrimitive?.contentOrNull ?: "BAG$") }
-            val emoji = remember(configJson.value) { mutableStateOf(settings?.get("emoji")?.jsonPrimitive?.contentOrNull ?: "💰") }
+            val currencyName = remember(configJson.value) { mutableStateOf(currency?.stringOrNull("name") ?: "BAG$") }
+            val emoji = remember(configJson.value) { mutableStateOf(settings?.stringOrNull("emoji") ?: "💰") }
 
             Card(Modifier.fillMaxWidth()) {
               Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -371,8 +381,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             val cfg = currentConfigObject()
             val welcome = cfg?.get("welcome")?.jsonObject
             val wEnabled = remember(configJson.value) { mutableStateOf(welcome?.get("enabled")?.jsonPrimitive?.booleanOrNull ?: false) }
-            val channelId = remember(configJson.value) { mutableStateOf(welcome?.get("channelId")?.jsonPrimitive?.contentOrNull ?: "") }
-            val message = remember(configJson.value) { mutableStateOf(welcome?.get("message")?.jsonPrimitive?.contentOrNull ?: "") }
+            val channelId = remember(configJson.value) { mutableStateOf(welcome?.stringOrNull("channelId") ?: "") }
+            val message = remember(configJson.value) { mutableStateOf(welcome?.stringOrNull("message") ?: "") }
 
             Card(Modifier.fillMaxWidth()) {
               Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
