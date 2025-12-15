@@ -44,33 +44,47 @@ jobs:
           cp settings.gradle settings.gradle.backup
           cp app/build.gradle app/build.gradle.backup
           
-          # Simplifier settings.gradle
-          cat > settings.gradle << 'EOF'
-          pluginManagement {
+          # Créer build.gradle root simplifié
+          cat > build.gradle << 'EOF'
+          buildscript {
+              ext {
+                  buildToolsVersion = "35.0.0"
+                  minSdkVersion = 24
+                  compileSdkVersion = 34
+                  targetSdkVersion = 34
+                  kotlinVersion = "1.9.25"
+              }
               repositories {
                   google()
-                  gradlePluginPortal()
                   mavenCentral()
+              }
+              dependencies {
+                  classpath('com.android.tools.build:gradle:8.2.0')
+                  classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
               }
           }
           
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+          allprojects {
               repositories {
                   google()
                   mavenCentral()
                   maven { url 'https://www.jitpack.io' }
               }
           }
+          EOF
           
+          # Simplifier settings.gradle
+          cat > settings.gradle << 'EOF'
           rootProject.name = 'BagBotApp'
           include ':app'
           EOF
           
-          # Simplifier app/build.gradle
+          # Simplifier app/build.gradle avec MainActivity
           cat > app/build.gradle << 'EOF'
-          apply plugin: "com.android.application"
-          apply plugin: "org.jetbrains.kotlin.android"
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
           
           android {
               namespace 'com.bagbot.dashboard'
@@ -106,11 +120,10 @@ jobs:
                   }
               }
               
-              packagingOptions {
-                  pickFirst 'lib/x86/libc++_shared.so'
-                  pickFirst 'lib/x86_64/libc++_shared.so'
-                  pickFirst 'lib/armeabi-v7a/libc++_shared.so'
-                  pickFirst 'lib/arm64-v8a/libc++_shared.so'
+              packaging {
+                  resources {
+                      pickFirsts += ['lib/x86/libc++_shared.so', 'lib/x86_64/libc++_shared.so', 'lib/armeabi-v7a/libc++_shared.so', 'lib/arm64-v8a/libc++_shared.so']
+                  }
               }
               
               compileOptions {
@@ -128,11 +141,66 @@ jobs:
               implementation 'androidx.appcompat:appcompat:1.6.1'
               implementation 'com.google.android.material:material:1.11.0'
               implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-              
-              // Support multidex
               implementation 'androidx.multidex:multidex:2.0.1'
           }
           EOF
+          
+          # Créer MainActivity simple
+          mkdir -p app/src/main/java/com/bagbot/dashboard
+          cat > app/src/main/java/com/bagbot/dashboard/MainActivity.kt << 'EOFKT'
+          package com.bagbot.dashboard
+          
+          import android.os.Bundle
+          import android.webkit.WebView
+          import android.webkit.WebViewClient
+          import android.webkit.WebSettings
+          import androidx.appcompat.app.AppCompatActivity
+          
+          class MainActivity : AppCompatActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  
+                  val webView = WebView(this)
+                  setContentView(webView)
+                  
+                  webView.webViewClient = WebViewClient()
+                  webView.settings.apply {
+                      javaScriptEnabled = true
+                      domStorageEnabled = true
+                      databaseEnabled = true
+                  }
+                  
+                  // Charger le dashboard web
+                  webView.loadUrl("https://bagbot-dashboard.onrender.com")
+              }
+          }
+          EOFKT
+          
+          # Créer AndroidManifest simple
+          mkdir -p app/src/main/res/values
+          cat > app/src/main/AndroidManifest.xml << 'EOFMANIFEST'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+              
+              <application
+                  android:allowBackup="true"
+                  android:icon="@android:drawable/sym_def_app_icon"
+                  android:label="BAG Bot Dashboard"
+                  android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+                  android:usesCleartextTraffic="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOFMANIFEST
           
           # Vérifier que le keystore debug existe
           if [ ! -f "app/debug.keystore" ]; then
