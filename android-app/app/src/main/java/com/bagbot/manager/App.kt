@@ -14,9 +14,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -65,7 +65,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
   val configJson = remember { mutableStateOf<String?>(null) } // full guild config JSON
   val configEdit = remember { mutableStateOf("") }
   val busy = remember { mutableStateOf(false) }
-  val tab = remember { mutableStateOf(0) } // 0 Home, 1 Economy, 2 Inactivity, 3 Welcome, 4 Config
+  val tab = remember { mutableStateOf(0) } // 0 Home, 1 Sections, 2 Inactivity, 3 Welcome, 4 Config
+  val sectionKey = remember { mutableStateOf<String?>(null) }
+  val sectionEdit = remember { mutableStateOf("") }
 
   val json = remember { Json { ignoreUnknownKeys = true } }
 
@@ -82,6 +84,37 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
   fun currentConfigObject(): JsonObject? {
     val s = configJson.value ?: return null
     return try { json.parseToJsonElement(s).jsonObject } catch (_: Exception) { null }
+  }
+
+  fun prettyPrint(el: kotlinx.serialization.json.JsonElement): String {
+    return Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), el)
+  }
+
+  fun openSection(key: String) {
+    val cfg = currentConfigObject() ?: run {
+      scope.launch { snackbar.showSnackbar("Config non chargée") }
+      return
+    }
+    val el = cfg[key] ?: JsonObject(emptyMap())
+    sectionKey.value = key
+    sectionEdit.value = prettyPrint(el)
+  }
+
+  fun saveSection(key: String, newSectionJson: String) {
+    val cfg = currentConfigObject() ?: run {
+      scope.launch { snackbar.showSnackbar("Config non chargée") }
+      return
+    }
+    try {
+      val newEl = json.parseToJsonElement(newSectionJson)
+      val root = cfg.toMutableMap()
+      root[key] = newEl
+      val newJson = Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), JsonObject(root))
+      saveFullConfig(newJson)
+      sectionKey.value = null
+    } catch (e: Exception) {
+      scope.launch { snackbar.showSnackbar("JSON invalide: ${e.message}") }
+    }
   }
 
   // Handle deep link: bagbot://auth?token=...
@@ -161,8 +194,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
           NavigationBarItem(
             selected = tab.value == 1,
             onClick = { tab.value = 1 },
-            icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Éco") },
-            label = { Text("Éco") }
+            icon = { Icon(Icons.Default.List, contentDescription = "Sections") },
+            label = { Text("Sections") }
           )
           NavigationBarItem(
             selected = tab.value == 2,
@@ -279,47 +312,51 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
           }
 
           1 -> {
-            val cfg = currentConfigObject()
-            val economy = cfg?.get("economy")?.jsonObject
-            val currency = economy?.get("currency")?.jsonObject
-            val settings = economy?.get("settings")?.jsonObject
-
-            val currencyName = remember(configJson.value) { mutableStateOf(currency?.stringOrNull("name") ?: "BAG$") }
-            val emoji = remember(configJson.value) { mutableStateOf(settings?.stringOrNull("emoji") ?: "💰") }
-
-            Card(Modifier.fillMaxWidth()) {
-              Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Économie", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(
-                  value = currencyName.value,
-                  onValueChange = { currencyName.value = it },
-                  label = { Text("Nom monnaie") },
-                  singleLine = true,
-                  modifier = Modifier.fillMaxWidth()
-                )
-                OutlinedTextField(
-                  value = emoji.value,
-                  onValueChange = { emoji.value = it },
-                  label = { Text("Emoji") },
-                  singleLine = true,
-                  modifier = Modifier.fillMaxWidth()
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                  Button(onClick = {
-                    val root = cfg?.toMutableMap() ?: mutableMapOf()
-                    val ecoMap = (root["economy"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
-                    val curMap = (ecoMap["currency"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
-                    val setMap = (ecoMap["settings"] as? JsonObject)?.toMutableMap() ?: mutableMapOf()
-                    curMap["name"] = JsonPrimitive(currencyName.value)
-                    setMap["emoji"] = JsonPrimitive(emoji.value)
-                    ecoMap["currency"] = JsonObject(curMap)
-                    ecoMap["settings"] = JsonObject(setMap)
-                    root["economy"] = JsonObject(ecoMap)
-                    val newJson = Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), JsonObject(root))
-                    saveFullConfig(newJson)
-                  }) { Text("Sauvegarder") }
-                  Button(onClick = { refreshAll() }) { Text("Recharger") }
+            val key = sectionKey.value
+            if (key == null) {
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Text("Sections", style = MaterialTheme.typography.titleMedium)
+                  Text(
+                    "Éditeurs par section (plus pratique que le gros JSON).",
+                    style = MaterialTheme.typography.bodySmall
+                  )
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { openSection("economy") }) { Text("Économie") }
+                    Button(onClick = { openSection("tickets") }) { Text("Tickets") }
+                  }
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { openSection("actions") }) { Text("Actions") }
+                    Button(onClick = { openSection("confess") }) { Text("Confess") }
+                  }
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { openSection("logs") }) { Text("Logs") }
+                    Button(onClick = { openSection("counting") }) { Text("Counting") }
+                  }
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { openSection("goodbye") }) { Text("Goodbye") }
+                    Button(onClick = { openSection("truthdare") }) { Text("A/V") }
+                  }
+                  Button(onClick = { openSection("autokick") }) { Text("AutoKick / Inactivité") }
+                }
+              }
+            } else {
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Text("Section: $key", style = MaterialTheme.typography.titleMedium)
+                  OutlinedTextField(
+                    value = sectionEdit.value,
+                    onValueChange = { sectionEdit.value = it },
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .height(320.dp),
+                    label = { Text("JSON") },
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                  )
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
+                    Button(onClick = { sectionKey.value = null }) { Text("Retour") }
+                  }
                 }
               }
             }
