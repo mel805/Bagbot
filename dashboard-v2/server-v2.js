@@ -653,14 +653,59 @@ const BACKUP_DIR = process.env.BAGBOT_BACKUP_DIR
   ? path.resolve(process.env.BAGBOT_BACKUP_DIR)
   : '/var/data/backups';
 
-// Discord API credentials
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+// ========= Discord token retrieval (Freebox-friendly) =========
+// Sources (in order):
+// 1) process.env.DISCORD_TOKEN (typically loaded from /home/bagbot/Bag-bot/.env by dotenv)
+// 2) PM2 process env (pm2 jlist) from "bagbot" or "dashboard"
+let pm2EnvCache = null;
+let pm2EnvCacheTime = 0;
+const PM2_ENV_CACHE_MS = 30 * 1000;
 
-if (!DISCORD_TOKEN) {
-  console.error('❌ DISCORD_TOKEN manquant dans .env');
-} else {
-  console.log('✓ Discord token chargé:', DISCORD_TOKEN.substring(0, 30) + '...');
+function getPm2EnvCached() {
+  const now = Date.now();
+  if (pm2EnvCache && (now - pm2EnvCacheTime) < PM2_ENV_CACHE_MS) return Promise.resolve(pm2EnvCache);
+  return new Promise((resolve) => {
+    exec('pm2 jlist', (error, stdout) => {
+      if (error || !stdout) {
+        pm2EnvCache = null;
+        pm2EnvCacheTime = now;
+        return resolve(null);
+      }
+      try {
+        const processes = JSON.parse(stdout);
+        const envs = {};
+        for (const name of ['bagbot', 'dashboard']) {
+          const proc = processes.find(p => p?.name === name);
+          const env = proc?.pm2_env?.env || proc?.pm2_env?.pm2_env || proc?.pm2_env || {};
+          envs[name] = env;
+        }
+        pm2EnvCache = envs;
+        pm2EnvCacheTime = now;
+        return resolve(envs);
+      } catch {
+        pm2EnvCache = null;
+        pm2EnvCacheTime = now;
+        return resolve(null);
+      }
+    });
+  });
 }
+
+async function getEnvFromBot(key) {
+  if (process.env[key]) return process.env[key];
+  const envs = await getPm2EnvCached();
+  if (!envs) return undefined;
+  return envs.bagbot?.[key] || envs.dashboard?.[key];
+}
+
+async function getDiscordBotToken() {
+  return (await getEnvFromBot('DISCORD_TOKEN')) || '';
+}
+
+// Never log the token value.
+getDiscordBotToken().then((t) => {
+  if (!t) console.warn('⚠️ DISCORD_TOKEN introuvable (ni env, ni PM2). Les endpoints Discord API échoueront.');
+}).catch(() => {});
 
 // Cache for channel names
 let channelsCache = null;
@@ -689,14 +734,16 @@ function writeConfig(data) {
 }
 
 // Fetch Discord channels
-function fetchDiscordChannels() {
+async function fetchDiscordChannels() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/channels`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -721,14 +768,16 @@ function fetchDiscordChannels() {
 }
 
 // Fetch Discord roles
-function fetchDiscordRoles() {
+async function fetchDiscordRoles() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/roles`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -790,13 +839,15 @@ async function getRoles() {
 
 // Fetch Discord members with real names
 async function fetchDiscordMembers() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/members?limit=1000`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -2382,7 +2433,8 @@ app.post('/webhook/message', verifyWebhook, async (req, res) => {
   try {
     const { channelId, content } = req.body || {};
     if (!channelId || !content) return res.status(400).json({ error: 'channelId and content are required' });
-    if (!DISCORD_TOKEN) return res.status(500).json({ error: 'DISCORD_TOKEN missing' });
+    const token = await getDiscordBotToken();
+    if (!token) return res.status(500).json({ error: 'DISCORD_TOKEN missing' });
 
     const payload = JSON.stringify({ content: String(content).slice(0, 2000) });
     const options = {
@@ -2390,7 +2442,7 @@ app.post('/webhook/message', verifyWebhook, async (req, res) => {
       path: `/api/v10/channels/${channelId}/messages`,
       method: 'POST',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       }
