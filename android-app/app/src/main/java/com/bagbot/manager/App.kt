@@ -293,81 +293,227 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             }
           }
         }
-        return@Box
-      }
-
-      if (busy.value) {
-        Row(
-          modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-          horizontalArrangement = Arrangement.Center
-        ) {
-          CircularProgressIndicator()
-        }
-      }
-
-      when (tab.value) {
-        0 -> {
-          Column(
+      } else {
+        if (busy.value) {
+          Row(
             modifier = Modifier
-              .padding(16.dp)
-              .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+              .fillMaxWidth()
+              .padding(12.dp),
+            horizontalArrangement = Arrangement.Center
           ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-              Button(onClick = { refreshAll() }) { Text("Rafraîchir") }
-              Button(onClick = {
-                scope.launch {
-                  busy.value = true
-                  try {
-                    withContext(Dispatchers.IO) {
-                      api.postJson("/bot/control", """{"action":"restart"}""")
-                    }
-                    snackbar.showSnackbar("Restart envoyé")
-                  } catch (e: Exception) {
-                    snackbar.showSnackbar("Erreur: ${e.message}")
-                  } finally {
-                    busy.value = false
-                  }
-                }
-              }) { Text("Restart") }
-              OutlinedButton(onClick = {
-                scope.launch {
-                  busy.value = true
-                  try {
-                    withContext(Dispatchers.IO) {
-                      api.postJson("/bot/control", """{"action":"deploy"}""")
-                    }
-                    snackbar.showSnackbar("Déploiement commandes lancé")
-                  } catch (e: Exception) {
-                    snackbar.showSnackbar("Erreur: ${e.message}")
-                  } finally {
-                    busy.value = false
-                  }
-                }
-              }) { Text("Deploy cmd") }
-            }
-
-            Card(Modifier.fillMaxWidth()) {
-              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Compte", style = MaterialTheme.typography.titleMedium)
-                Text(meJson.value ?: "—", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-              }
-            }
-
-            Card(Modifier.fillMaxWidth()) {
-              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Statut bot", style = MaterialTheme.typography.titleMedium)
-                Text(statusJson.value ?: "—", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
-              }
-            }
+            CircularProgressIndicator()
           }
         }
 
-        1 -> {
-          val key = sectionKey.value
-          if (key != null) {
+        when (tab.value) {
+          0 -> {
+            Column(
+              modifier = Modifier
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+              verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { refreshAll() }) { Text("Rafraîchir") }
+                Button(onClick = {
+                  scope.launch {
+                    busy.value = true
+                    try {
+                      withContext(Dispatchers.IO) {
+                        api.postJson("/bot/control", """{"action":"restart"}""")
+                      }
+                      snackbar.showSnackbar("Restart envoyé")
+                    } catch (e: Exception) {
+                      snackbar.showSnackbar("Erreur: ${e.message}")
+                    } finally {
+                      busy.value = false
+                    }
+                  }
+                }) { Text("Restart") }
+                OutlinedButton(onClick = {
+                  scope.launch {
+                    busy.value = true
+                    try {
+                      withContext(Dispatchers.IO) {
+                        api.postJson("/bot/control", """{"action":"deploy"}""")
+                      }
+                      snackbar.showSnackbar("Déploiement commandes lancé")
+                    } catch (e: Exception) {
+                      snackbar.showSnackbar("Erreur: ${e.message}")
+                    } finally {
+                      busy.value = false
+                    }
+                  }
+                }) { Text("Deploy cmd") }
+              }
+
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Text("Compte", style = MaterialTheme.typography.titleMedium)
+                  Text(meJson.value ?: "—", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                }
+              }
+
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                  Text("Statut bot", style = MaterialTheme.typography.titleMedium)
+                  Text(statusJson.value ?: "—", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                }
+              }
+            }
+          }
+
+          1 -> {
+            val key = sectionKey.value
+            if (key != null) {
+              Column(
+                modifier = Modifier
+                  .padding(16.dp)
+                  .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+              ) {
+                Card(Modifier.fillMaxWidth()) {
+                  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Section: $key", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                      value = sectionEdit.value,
+                      onValueChange = { sectionEdit.value = it },
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp),
+                      label = { Text("JSON") },
+                      textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                      Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
+                      OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+                    }
+                  }
+                }
+              }
+            } else {
+              val cfg = currentConfigObject()
+              LazyColumn(
+                modifier = Modifier
+                  .fillMaxSize()
+                  .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+              ) {
+                item {
+                  Text("Configuration", style = MaterialTheme.typography.titleLarge)
+                  Spacer(Modifier.height(6.dp))
+                  Text("Ouvre une section pour la modifier (éditeur JSON par section).", style = MaterialTheme.typography.bodySmall)
+                }
+                items(sectionCards()) { item ->
+                  Card(
+                    modifier = Modifier
+                      .fillMaxWidth()
+                      .clickable { openSection(item.key) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                  ) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                      Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                        Icon(item.icon, contentDescription = null)
+                        Column(Modifier.weight(1f)) {
+                          Text(item.title, style = MaterialTheme.typography.titleMedium)
+                          Text(item.subtitle, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(">", style = MaterialTheme.typography.titleMedium)
+                      }
+                      val present = cfg?.containsKey(item.key) == true
+                      Text(if (present) "Présent" else "Non configuré", style = MaterialTheme.typography.labelSmall)
+                    }
+                  }
+                }
+                item {
+                  Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                      Text("Éditeur complet (fallback)", style = MaterialTheme.typography.titleMedium)
+                      OutlinedTextField(
+                        value = configEdit.value,
+                        onValueChange = { configEdit.value = it },
+                        modifier = Modifier
+                          .fillMaxWidth()
+                          .height(220.dp),
+                        label = { Text("Guild config JSON") },
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                      )
+                      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(onClick = { saveFullConfig(configEdit.value) }) { Text("Sauvegarder") }
+                        OutlinedButton(onClick = { configEdit.value = configJson.value ?: "" }) { Text("Annuler") }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          2 -> {
+            LaunchedEffect(Unit) { refreshBackups() }
+            Column(
+              modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
+              verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = {
+                  scope.launch {
+                    busy.value = true
+                    try {
+                      withContext(Dispatchers.IO) {
+                        api.postJson("/backup", "{}")
+                      }
+                      snackbar.showSnackbar("Backup créé")
+                      refreshBackups()
+                    } catch (e: Exception) {
+                      snackbar.showSnackbar("Erreur: ${e.message}")
+                    } finally {
+                      busy.value = false
+                    }
+                  }
+                }) { Text("Créer backup") }
+                OutlinedButton(onClick = { refreshBackups() }) { Text("Rafraîchir") }
+              }
+
+              if (backups.value.isEmpty()) {
+                Text("Aucun backup trouvé.", style = MaterialTheme.typography.bodyMedium)
+              } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
+                  items(backups.value) { b ->
+                    Card(Modifier.fillMaxWidth()) {
+                      Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(b.displayName, style = MaterialTheme.typography.titleMedium)
+                        Text("${b.date} • ${b.size}", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                          Button(onClick = {
+                            scope.launch {
+                              busy.value = true
+                              try {
+                                withContext(Dispatchers.IO) {
+                                  api.postJson("/restore", """{"filename":"${b.filename}"}""")
+                                }
+                                snackbar.showSnackbar("Restore lancé")
+                                refreshAll()
+                              } catch (e: Exception) {
+                                snackbar.showSnackbar("Erreur: ${e.message}")
+                              } finally {
+                                busy.value = false
+                              }
+                            }
+                          }) { Text("Restaurer") }
+                          Spacer(Modifier.width(1.dp))
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          else -> {
             Column(
               modifier = Modifier
                 .padding(16.dp)
@@ -376,182 +522,35 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             ) {
               Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                  Text("Section: $key", style = MaterialTheme.typography.titleMedium)
+                  Text("Paramètres", style = MaterialTheme.typography.titleMedium)
                   OutlinedTextField(
-                    value = sectionEdit.value,
-                    onValueChange = { sectionEdit.value = it },
-                    modifier = Modifier
-                      .fillMaxWidth()
-                      .height(320.dp),
-                    label = { Text("JSON") },
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                    value = baseUrl.value,
+                    onValueChange = { baseUrl.value = it },
+                    label = { Text("URL Dashboard") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                   )
                   Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
-                    OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+                    Button(onClick = {
+                      store.setBaseUrl(baseUrl.value.trim().removeSuffix("/"))
+                      scope.launch { snackbar.showSnackbar("URL enregistrée") }
+                    }) { Text("Enregistrer") }
+                    OutlinedButton(onClick = { refreshAll() }) { Text("Recharger") }
                   }
                 }
               }
-            }
-          } else {
-            val cfg = currentConfigObject()
-            LazyColumn(
-              modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-              verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-              item {
-                Text("Configuration", style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(6.dp))
-                Text("Ouvre une section pour la modifier (éditeur JSON par section).", style = MaterialTheme.typography.bodySmall)
-              }
-              items(sectionCards()) { item ->
-                Card(
-                  modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { openSection(item.key) },
-                  colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                  Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                      Icon(item.icon, contentDescription = null)
-                      Column(Modifier.weight(1f)) {
-                        Text(item.title, style = MaterialTheme.typography.titleMedium)
-                        Text(item.subtitle, style = MaterialTheme.typography.bodySmall)
-                      }
-                      Text(">", style = MaterialTheme.typography.titleMedium)
-                    }
-                    val present = cfg?.containsKey(item.key) == true
-                    Text(if (present) "Présent" else "Non configuré", style = MaterialTheme.typography.labelSmall)
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Text("Session", style = MaterialTheme.typography.titleMedium)
+                  Text("Token: présent", style = MaterialTheme.typography.bodySmall)
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { login() }) { Text("Se reconnecter") }
+                    OutlinedButton(onClick = {
+                      store.setToken("")
+                      token.value = ""
+                      scope.launch { snackbar.showSnackbar("Déconnecté") }
+                    }) { Text("Se déconnecter") }
                   }
-                }
-              }
-              item {
-                Card(Modifier.fillMaxWidth()) {
-                  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Éditeur complet (fallback)", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                      value = configEdit.value,
-                      onValueChange = { configEdit.value = it },
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .height(220.dp),
-                      label = { Text("Guild config JSON") },
-                      textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                      Button(onClick = { saveFullConfig(configEdit.value) }) { Text("Sauvegarder") }
-                      OutlinedButton(onClick = { configEdit.value = configJson.value ?: "" }) { Text("Annuler") }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        2 -> {
-          LaunchedEffect(Unit) { refreshBackups() }
-          Column(
-            modifier = Modifier
-              .padding(16.dp)
-              .fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-          ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-              Button(onClick = {
-                scope.launch {
-                  busy.value = true
-                  try {
-                    withContext(Dispatchers.IO) {
-                      api.postJson("/backup", "{}")
-                    }
-                    snackbar.showSnackbar("Backup créé")
-                    refreshBackups()
-                  } catch (e: Exception) {
-                    snackbar.showSnackbar("Erreur: ${e.message}")
-                  } finally {
-                    busy.value = false
-                  }
-                }
-              }) { Text("Créer backup") }
-              OutlinedButton(onClick = { refreshBackups() }) { Text("Rafraîchir") }
-            }
-
-            if (backups.value.isEmpty()) {
-              Text("Aucun backup trouvé.", style = MaterialTheme.typography.bodyMedium)
-            } else {
-              LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxSize()) {
-                items(backups.value) { b ->
-                  Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                      Text(b.displayName, style = MaterialTheme.typography.titleMedium)
-                      Text("${b.date} • ${b.size}", style = MaterialTheme.typography.bodySmall)
-                      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(onClick = {
-                          scope.launch {
-                            busy.value = true
-                            try {
-                              withContext(Dispatchers.IO) {
-                                api.postJson("/restore", """{"filename":"${b.filename}"}""")
-                              }
-                              snackbar.showSnackbar("Restore lancé")
-                              refreshAll()
-                            } catch (e: Exception) {
-                              snackbar.showSnackbar("Erreur: ${e.message}")
-                            } finally {
-                              busy.value = false
-                            }
-                          }
-                        }) { Text("Restaurer") }
-                        Spacer(Modifier.width(1.dp))
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        else -> {
-          Column(
-            modifier = Modifier
-              .padding(16.dp)
-              .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-          ) {
-            Card(Modifier.fillMaxWidth()) {
-              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Paramètres", style = MaterialTheme.typography.titleMedium)
-                OutlinedTextField(
-                  value = baseUrl.value,
-                  onValueChange = { baseUrl.value = it },
-                  label = { Text("URL Dashboard") },
-                  singleLine = true,
-                  modifier = Modifier.fillMaxWidth()
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                  Button(onClick = {
-                    store.setBaseUrl(baseUrl.value.trim().removeSuffix("/"))
-                    scope.launch { snackbar.showSnackbar("URL enregistrée") }
-                  }) { Text("Enregistrer") }
-                  OutlinedButton(onClick = { refreshAll() }) { Text("Recharger") }
-                }
-              }
-            }
-            Card(Modifier.fillMaxWidth()) {
-              Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Session", style = MaterialTheme.typography.titleMedium)
-                Text("Token: présent", style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                  Button(onClick = { login() }) { Text("Se reconnecter") }
-                  OutlinedButton(onClick = {
-                    store.setToken("")
-                    token.value = ""
-                    scope.launch { snackbar.showSnackbar("Déconnecté") }
-                  }) { Text("Se déconnecter") }
                 }
               }
             }
