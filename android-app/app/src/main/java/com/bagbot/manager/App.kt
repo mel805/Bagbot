@@ -87,6 +87,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 
   val backups = remember { mutableStateOf<List<BackupItem>>(emptyList()) }
 
+  val discordChannels = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+  val discordRoles = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
   val json = remember { Json { ignoreUnknownKeys = true } }
 
   fun ensureBaseUrlOrWarn(): Boolean {
@@ -105,6 +108,37 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 
   fun prettyPrint(el: kotlinx.serialization.json.JsonElement): String {
     return Json { prettyPrint = true }.encodeToString(kotlinx.serialization.json.JsonElement.serializer(), el)
+  }
+
+  fun parseStringMap(jsonBody: String): Map<String, String> {
+    return try {
+      val obj = json.parseToJsonElement(jsonBody).jsonObject
+      obj.mapNotNull { (k, v) ->
+        val p = v as? JsonPrimitive ?: return@mapNotNull null
+        val name = p.contentOrNull ?: return@mapNotNull null
+        k to name
+      }.toMap()
+    } catch (_: Exception) {
+      emptyMap()
+    }
+  }
+
+  fun refreshDiscordMeta() {
+    scope.launch {
+      if (!ensureBaseUrlOrWarn()) return@launch
+      try {
+        val (ch, ro) = withContext(Dispatchers.IO) {
+          Pair(
+            api.getJson("/api/discord/channels"),
+            api.getJson("/api/discord/roles"),
+          )
+        }
+        discordChannels.value = parseStringMap(ch)
+        discordRoles.value = parseStringMap(ro)
+      } catch (_: Exception) {
+        // Non-bloquant: les écrans peuvent fallback sur saisie d'ID.
+      }
+    }
   }
 
   fun saveFullConfig(newConfigJson: String) {
@@ -256,6 +290,15 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
   LaunchedEffect(tab.value, token.value, baseUrl.value) {
     if (token.value.isNotBlank() && tab.value == 1 && configJson.value.isNullOrBlank()) {
       refreshAll()
+    }
+  }
+
+  // Load Discord channel/role names for pickers
+  LaunchedEffect(tab.value, token.value, baseUrl.value, configJson.value) {
+    if (token.value.isNotBlank() && tab.value == 1) {
+      if (discordChannels.value.isEmpty() || discordRoles.value.isEmpty()) {
+        refreshDiscordMeta()
+      }
     }
   }
 
@@ -422,28 +465,56 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
           1 -> {
             val key = sectionKey.value
             if (key != null) {
-              val isFull = key == "__full__"
-              Column(
-                modifier = Modifier
-                  .padding(16.dp)
-                  .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-              ) {
-                Card(Modifier.fillMaxWidth()) {
-                  Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(if (isFull) "Éditeur complet" else "Section: $key", style = MaterialTheme.typography.titleMedium)
-                    OutlinedTextField(
-                      value = sectionEdit.value,
-                      onValueChange = { sectionEdit.value = it },
-                      modifier = Modifier
-                        .fillMaxWidth()
-                        .height(320.dp),
-                      label = { Text(if (isFull) "JSON complet" else "JSON") },
-                      textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                      Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
-                      OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+              val cfg = currentConfigObject()
+              when (key) {
+                "tickets" -> {
+                  TicketsEditor(
+                    tickets = (cfg?.get("tickets") as? JsonObject) ?: JsonObject(emptyMap()),
+                    channels = discordChannels.value,
+                    roles = discordRoles.value,
+                    onSave = { obj ->
+                      saveSection("tickets", prettyPrint(obj))
+                      sectionKey.value = null
+                    },
+                    onBack = { sectionKey.value = null }
+                  )
+                }
+                "autokick" -> {
+                  AutoKickEditor(
+                    autokick = (cfg?.get("autokick") as? JsonObject) ?: JsonObject(emptyMap()),
+                    roles = discordRoles.value,
+                    onSave = { obj ->
+                      saveSection("autokick", prettyPrint(obj))
+                      sectionKey.value = null
+                    },
+                    onBack = { sectionKey.value = null }
+                  )
+                }
+                else -> {
+                  val isFull = key == "__full__"
+                  Column(
+                    modifier = Modifier
+                      .padding(16.dp)
+                      .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                  ) {
+                    Card(Modifier.fillMaxWidth()) {
+                      Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(if (isFull) "Éditeur complet" else "Section: $key", style = MaterialTheme.typography.titleMedium)
+                        OutlinedTextField(
+                          value = sectionEdit.value,
+                          onValueChange = { sectionEdit.value = it },
+                          modifier = Modifier
+                            .fillMaxWidth()
+                            .height(320.dp),
+                          label = { Text(if (isFull) "JSON complet" else "JSON") },
+                          textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                          Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
+                          OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+                        }
+                      }
                     }
                   }
                 }
@@ -472,7 +543,10 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                   verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                   Text("Configuration", style = MaterialTheme.typography.titleLarge)
-                  Text("Sélectionne une section (vignettes).", style = MaterialTheme.typography.bodySmall)
+                  Text(
+                    "Menu type dashboard: sections + vrais réglages (Tickets/AutoKick).",
+                    style = MaterialTheme.typography.bodySmall
+                  )
 
                   LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 170.dp),
@@ -480,8 +554,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                   ) {
-                    items(sectionCards()) { item ->
-                      val present = cfg.containsKey(item.key)
+                    items(sectionCards(cfg)) { item ->
+                      val present = item.key == "__full__" || cfg.containsKey(item.key)
                       Card(
                         modifier = Modifier
                           .fillMaxWidth()
@@ -636,17 +710,31 @@ data class SectionCard(
   val icon: ImageVector
 )
 
-fun sectionCards(): List<SectionCard> = listOf(
-  SectionCard("economy", "Économie", "Monnaie, boutique, actions, cooldowns", Icons.Default.Build),
-  SectionCard("tickets", "Tickets", "Panel, catégories, réglages", Icons.Default.Notifications),
-  SectionCard("confess", "Confess", "Channels, settings, nsfwNames", Icons.Default.Notifications),
-  SectionCard("welcome", "Welcome", "Message de bienvenue", Icons.Default.Notifications),
-  SectionCard("goodbye", "Goodbye", "Message d'au revoir", Icons.Default.Notifications),
-  SectionCard("autokick", "AutoKick / Inactivité", "InactivityKick, tracking", Icons.Default.Build),
-  SectionCard("counting", "Counting", "Allow formulas, channels, state", Icons.Default.Build),
-  SectionCard("truthdare", "Action/Vérité", "Prompts + channels", Icons.Default.Build),
-  SectionCard("actions", "Actions", "Gifs/messages/config", Icons.Default.Build),
-  SectionCard("logs", "Logs", "Config logs (via config)", Icons.Default.Build),
-  SectionCard("__full__", "Éditeur complet", "Modifier toute la config (fallback)", Icons.Default.List),
-)
+fun sectionCards(cfg: JsonObject): List<SectionCard> {
+  val presets = linkedMapOf(
+    "tickets" to SectionCard("tickets", "Tickets", "Panel, catégories, staff ping", Icons.Default.Notifications),
+    "autokick" to SectionCard("autokick", "AutoKick / Inactivité", "AutoKick + menu /config inactivité", Icons.Default.Build),
+    "economy" to SectionCard("economy", "Économie", "Balances, récompenses, settings", Icons.Default.Build),
+    "levels" to SectionCard("levels", "Niveaux", "XP, rôles, users", Icons.Default.Build),
+    "geo" to SectionCard("geo", "Géo", "Localisations, options", Icons.Default.Build),
+  )
+
+  val keys = cfg.keys
+    .filter { !it.startsWith("_") }
+    .sorted()
+
+  val out = mutableListOf<SectionCard>()
+  // known first if present
+  for ((k, c) in presets) {
+    if (keys.contains(k)) out.add(c)
+  }
+  // everything else
+  for (k in keys) {
+    if (presets.containsKey(k)) continue
+    out.add(SectionCard(k, k, "Configuration $k", Icons.Default.List))
+  }
+  // always provide full editor
+  out.add(SectionCard("__full__", "Éditeur complet", "Modifier toute la config (avancé)", Icons.Default.List))
+  return out
+}
 
