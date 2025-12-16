@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -42,6 +43,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +63,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.JsonArray
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -74,7 +77,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 
   val baseUrl = remember { mutableStateOf(store.getBaseUrl()) }
   val token = remember { mutableStateOf(store.getToken()) }
-  val tab = remember { mutableStateOf(0) } // 0 Home, 1 Configurer, 2 Backups, 3 Settings
+  val tab = remember { mutableStateOf(0) } // 0 Home, 1 Configurer, 2 Backups, 3 Chat, 4 Settings
 
   val busy = remember { mutableStateOf(false) }
   val statusJson = remember { mutableStateOf<String?>(null) }
@@ -89,6 +92,11 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 
   val discordChannels = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
   val discordRoles = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+  val discordMembers = remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+
+  val staffChatMessages = remember { mutableStateOf<List<StaffChatMessage>>(emptyList()) }
+  val staffChatDraft = remember { mutableStateOf("") }
+  val staffChatChannelId = remember { mutableStateOf("") }
 
   val json = remember { Json { ignoreUnknownKeys = true } }
 
@@ -126,16 +134,82 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     scope.launch {
       if (!ensureBaseUrlOrWarn()) return@launch
       try {
-        val (ch, ro) = withContext(Dispatchers.IO) {
-          Pair(
+        val (ch, ro, mem) = withContext(Dispatchers.IO) {
+          Triple(
             api.getJson("/api/discord/channels"),
-            api.getJson("/api/discord/roles")
+            api.getJson("/api/discord/roles"),
+            api.getJson("/api/discord/members")
           )
         }
         discordChannels.value = parseStringMap(ch)
         discordRoles.value = parseStringMap(ro)
+        discordMembers.value = parseMembersNames(mem)
       } catch (_: Exception) {
         // Non-bloquant: les écrans peuvent fallback sur saisie d'ID.
+      }
+    }
+  }
+
+  fun parseMembersNames(jsonBody: String): Map<String, String> {
+    return try {
+      val el = json.parseToJsonElement(jsonBody)
+      val obj = el.jsonObject
+      val namesEl = obj["names"]
+      if (namesEl is JsonObject) {
+        namesEl.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
+      } else {
+        // backward compatibility: if server returns a plain map
+        obj.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
+      }
+    } catch (_: Exception) {
+      emptyMap()
+    }
+  }
+
+  fun refreshStaffChat(limit: Int = 50) {
+    scope.launch {
+      if (!ensureBaseUrlOrWarn()) return@launch
+      busy.value = true
+      try {
+        val raw = withContext(Dispatchers.IO) { api.getJson("/api/staff-chat/messages?limit=$limit") }
+        val obj = json.parseToJsonElement(raw).jsonObject
+        staffChatChannelId.value = (obj["channelId"] as? JsonPrimitive)?.content ?: ""
+        val arr = obj["messages"] as? kotlinx.serialization.json.JsonArray
+        val list = arr?.mapNotNull { el ->
+          val o = el.jsonObject
+          StaffChatMessage(
+            id = (o["id"] as? JsonPrimitive)?.content ?: "",
+            authorId = (o["authorId"] as? JsonPrimitive)?.content ?: "",
+            authorName = (o["authorName"] as? JsonPrimitive)?.content ?: "",
+            content = (o["content"] as? JsonPrimitive)?.content ?: "",
+            timestamp = (o["timestamp"] as? JsonPrimitive)?.content ?: "",
+          )
+        } ?: emptyList()
+        staffChatMessages.value = list
+      } catch (e: Exception) {
+        snackbar.showSnackbar("Chat staff: ${e.message}")
+      } finally {
+        busy.value = false
+      }
+    }
+  }
+
+  fun sendStaffChatMessage() {
+    val msg = staffChatDraft.value.trim()
+    if (msg.isBlank()) return
+    scope.launch {
+      if (!ensureBaseUrlOrWarn()) return@launch
+      busy.value = true
+      try {
+        withContext(Dispatchers.IO) {
+          api.postJson("/api/staff-chat/send", """{"content":${json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(msg))}}""")
+        }
+        staffChatDraft.value = ""
+        refreshStaffChat()
+      } catch (e: Exception) {
+        snackbar.showSnackbar("Envoi chat: ${e.message}")
+      } finally {
+        busy.value = false
       }
     }
   }
@@ -270,6 +344,14 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
   LaunchedEffect(deepLink) {
     if (deepLink == null) return@LaunchedEffect
     val t = deepLink.getQueryParameter("token")
+    val b = deepLink.getQueryParameter("base")
+    if (!b.isNullOrBlank()) {
+      val clean = b.trim().removeSuffix("/")
+      if (clean.isNotBlank()) {
+        store.setBaseUrl(clean)
+        baseUrl.value = clean
+      }
+    }
     if (!t.isNullOrBlank()) {
       store.setToken(t.trim())
       token.value = t.trim()
@@ -304,7 +386,14 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
   val connected = token.value.isNotBlank()
 
   Scaffold(
-    topBar = { TopAppBar(title = { Text("BAG Bot Manager") }) },
+    topBar = {
+      TopAppBar(
+        title = { Text("BAG Bot Manager") },
+        colors = TopAppBarDefaults.topAppBarColors(
+          containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+      )
+    },
     bottomBar = {
       if (connected) {
         NavigationBar {
@@ -329,6 +418,12 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
           NavigationBarItem(
             selected = tab.value == 3,
             onClick = { tab.value = 3 },
+            icon = { Icon(Icons.Default.Chat, contentDescription = null) },
+            label = { Text("Chat staff") }
+          )
+          NavigationBarItem(
+            selected = tab.value == 4,
+            onClick = { tab.value = 4 },
             icon = { Icon(Icons.Default.Settings, contentDescription = null) },
             label = { Text("Paramètres") }
           )
@@ -383,7 +478,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             Text("Paramètres requis", style = MaterialTheme.typography.titleLarge)
             Text("L'URL du dashboard est vide. Renseigne-la dans Paramètres.", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-              Button(onClick = { tab.value = 3 }) { Text("Aller aux paramètres") }
+              Button(onClick = { tab.value = 4 }) { Text("Aller aux paramètres") }
               OutlinedButton(onClick = {
                 store.setToken("")
                 token.value = ""
@@ -489,32 +584,62 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     onBack = { sectionKey.value = null }
                   )
                 }
+                "staffChat" -> {
+                  StaffChatConfigEditor(
+                    staffChat = (cfg?.get("staffChat") as? JsonObject) ?: JsonObject(emptyMap()),
+                    channels = discordChannels.value,
+                    onSave = { obj ->
+                      saveSection("staffChat", prettyPrint(obj))
+                      sectionKey.value = null
+                    },
+                    onBack = { sectionKey.value = null }
+                  )
+                }
                 else -> {
                   val isFull = key == "__full__"
-                  Column(
-                    modifier = Modifier
-                      .padding(16.dp)
-                      .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                  ) {
-                    Card(Modifier.fillMaxWidth()) {
-                      Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(if (isFull) "Éditeur complet" else "Section: $key", style = MaterialTheme.typography.titleMedium)
-                        OutlinedTextField(
-                          value = sectionEdit.value,
-                          onValueChange = { sectionEdit.value = it },
-                          modifier = Modifier
-                            .fillMaxWidth()
-                            .height(320.dp),
-                          label = { Text(if (isFull) "JSON complet" else "JSON") },
-                          textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                          Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
-                          OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+                  if (isFull) {
+                    Column(
+                      modifier = Modifier
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState()),
+                      verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                      Card(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                          Text("Éditeur complet", style = MaterialTheme.typography.titleMedium)
+                          OutlinedTextField(
+                            value = sectionEdit.value,
+                            onValueChange = { sectionEdit.value = it },
+                            modifier = Modifier
+                              .fillMaxWidth()
+                              .height(320.dp),
+                            label = { Text("JSON complet") },
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
+                          )
+                          Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(onClick = { saveSection(key, sectionEdit.value) }) { Text("Sauvegarder") }
+                            OutlinedButton(onClick = { sectionKey.value = null }) { Text("Retour") }
+                          }
                         }
                       }
                     }
+                  } else {
+                    val sectionObj = (cfg?.get(key) as? JsonObject) ?: JsonObject(emptyMap())
+                    SmartSectionEditor(
+                      title = "Section: $key",
+                      sectionKey = key,
+                      section = sectionObj,
+                      channels = discordChannels.value,
+                      roles = discordRoles.value,
+                      members = discordMembers.value,
+                      rawJson = sectionEdit.value,
+                      onRawJsonChange = { sectionEdit.value = it },
+                      onSaveSection = { obj ->
+                        saveSection(key, prettyPrint(obj))
+                        sectionKey.value = null
+                      },
+                      onBack = { sectionKey.value = null }
+                    )
                   }
                 }
               }
@@ -531,7 +656,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                   Text("Config non chargée.", style = MaterialTheme.typography.bodySmall)
                   Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = { refreshAll() }) { Text("Charger") }
-                    OutlinedButton(onClick = { tab.value = 3 }) { Text("Paramètres") }
+                    OutlinedButton(onClick = { tab.value = 4 }) { Text("Paramètres") }
                   }
                 }
               } else {
@@ -646,7 +771,62 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
             }
           }
 
-          else -> {
+          3 -> {
+            LaunchedEffect(Unit) { refreshStaffChat() }
+            Column(
+              modifier = Modifier
+                .padding(16.dp)
+                .fillMaxSize(),
+              verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+              Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(onClick = { refreshStaffChat() }) { Text("Rafraîchir") }
+                if (staffChatChannelId.value.isNotBlank()) {
+                  Text("Salon: ${staffChatChannelId.value}", style = MaterialTheme.typography.bodySmall)
+                }
+              }
+
+              Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                  Text("Chat staff", style = MaterialTheme.typography.titleMedium)
+                  if (staffChatMessages.value.isEmpty()) {
+                    Text(
+                      "Aucun message ou chat non configuré côté dashboard (staffChat.channelId).",
+                      style = MaterialTheme.typography.bodySmall
+                    )
+                  } else {
+                    LazyColumn(
+                      verticalArrangement = Arrangement.spacedBy(8.dp),
+                      modifier = Modifier
+                        .fillMaxWidth()
+                        .height(360.dp)
+                    ) {
+                      items(staffChatMessages.value) { m ->
+                        Card(Modifier.fillMaxWidth()) {
+                          Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(m.authorName, style = MaterialTheme.typography.labelLarge)
+                            Text(m.content, style = MaterialTheme.typography.bodyMedium)
+                          }
+                        }
+                      }
+                    }
+                  }
+                  OutlinedTextField(
+                    value = staffChatDraft.value,
+                    onValueChange = { staffChatDraft.value = it },
+                    label = { Text("Message") },
+                    modifier = Modifier.fillMaxWidth()
+                  )
+                  Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = { sendStaffChatMessage() }) { Text("Envoyer") }
+                    OutlinedButton(onClick = { staffChatDraft.value = "" }) { Text("Effacer") }
+                  }
+                }
+              }
+            }
+          }
+
+          4 -> {
             Column(
               modifier = Modifier
                 .padding(16.dp)
@@ -694,6 +874,14 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     }
   }
 }
+
+data class StaffChatMessage(
+  val id: String,
+  val authorId: String,
+  val authorName: String,
+  val content: String,
+  val timestamp: String
+)
 
 data class BackupItem(
   val filename: String,

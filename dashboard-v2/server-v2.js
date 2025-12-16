@@ -487,6 +487,7 @@ app.get('/auth/mobile/callback', async (req, res) => {
     const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
     const redirectUri = `${proto}://${host}/auth/mobile/callback`;
+    const origin = `${proto}://${host}`;
 
     const clientId = await getDiscordOAuthClientId();
     const clientSecret = await getDiscordOAuthClientSecret();
@@ -528,6 +529,8 @@ app.get('/auth/mobile/callback', async (req, res) => {
     const url = new URL(appRedirect);
     url.searchParams.set('token', mobileToken);
     if (me.data?.username) url.searchParams.set('user', me.data.username);
+    // Let the app persist the dashboard base URL automatically after OAuth
+    url.searchParams.set('base', origin);
     // Some in-app browsers (e.g. Discord) can block direct redirects to custom schemes.
     // Return an HTML "Open app" page that attempts the redirect via JS + provides a fallback link.
     const target = url.toString();
@@ -1285,6 +1288,92 @@ app.get('/api/discord/members', async (req, res) => {
   } catch (err) {
     console.error('Error in /api/discord/members:', err);
     res.status(500).json({ error: 'Failed to fetch members' });
+  }
+});
+
+// ===== Staff chat (proxy Discord messages) =====
+// Config: guildConfig.staffChat = { enabled: true, channelId: "123" }
+function getStaffChatChannelId() {
+  const config = readConfig();
+  const guildConfig = config.guilds?.[GUILD] || {};
+  const ch = guildConfig.staffChat?.channelId;
+  return typeof ch === 'string' ? ch : '';
+}
+
+async function discordBotApi(path, { method = 'GET', body = null } = {}) {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
+  const options = {
+    hostname: 'discord.com',
+    path: `/api/v10${path}`,
+    method,
+    headers: {
+      'Authorization': `Bot ${token}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => (data += chunk));
+      resp.on('end', () => {
+        let parsed = null;
+        try { parsed = data ? JSON.parse(data) : null; } catch (_) {}
+        if (resp.statusCode >= 200 && resp.statusCode < 300) return resolve(parsed);
+        const msg = parsed?.message || data || `Discord API error: ${resp.statusCode}`;
+        return reject(new Error(msg));
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+app.get('/api/staff-chat/messages', requireAdminAuth, async (req, res) => {
+  try {
+    const channelId = getStaffChatChannelId();
+    if (!channelId) return res.status(400).json({ error: 'staffChat.channelId is not configured' });
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+    const messages = await discordBotApi(`/channels/${channelId}/messages?limit=${limit}`, { method: 'GET' });
+    const membersData = await getMembers().catch(() => ({}));
+    const names = membersData.names || membersData || {};
+
+    const out = (Array.isArray(messages) ? messages : []).map((m) => {
+      const authorId = m.author?.id || '';
+      const display =
+        m.member?.nick ||
+        m.author?.global_name ||
+        m.author?.username ||
+        names[authorId] ||
+        `User-${String(authorId).slice(-4)}`;
+      return {
+        id: m.id,
+        authorId,
+        authorName: display,
+        content: m.content || '',
+        timestamp: m.timestamp || ''
+      };
+    }).reverse();
+    return res.json({ channelId, messages: out });
+  } catch (err) {
+    console.error('Error in /api/staff-chat/messages:', err);
+    return res.status(500).json({ error: 'Failed to fetch staff chat messages' });
+  }
+});
+
+app.post('/api/staff-chat/send', requireAdminAuth, async (req, res) => {
+  try {
+    const channelId = getStaffChatChannelId();
+    if (!channelId) return res.status(400).json({ error: 'staffChat.channelId is not configured' });
+    const content = String(req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ error: 'content is required' });
+    if (content.length > 1800) return res.status(400).json({ error: 'message too long' });
+    const created = await discordBotApi(`/channels/${channelId}/messages`, { method: 'POST', body: { content } });
+    return res.json({ success: true, id: created?.id || null });
+  } catch (err) {
+    console.error('Error in /api/staff-chat/send:', err);
+    return res.status(500).json({ error: 'Failed to send staff chat message' });
   }
 });
 

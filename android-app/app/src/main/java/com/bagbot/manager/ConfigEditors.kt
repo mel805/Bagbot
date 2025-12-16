@@ -508,3 +508,53 @@ fun AutoKickEditor(
   }
 }
 
+@Composable
+fun StaffChatConfigEditor(
+  staffChat: JsonObject,
+  channels: Map<String, String>,
+  onSave: (JsonObject) -> Unit,
+  onBack: () -> Unit,
+) {
+  val enabled = remember { mutableStateOf(staffChat.boolOrNull("enabled") ?: false) }
+  val channelId = remember { mutableStateOf(staffChat.stringOrNull("channelId") ?: "") }
+
+  Column(
+    modifier = Modifier
+      .padding(16.dp)
+      .verticalScroll(rememberScrollState()),
+    verticalArrangement = Arrangement.spacedBy(12.dp)
+  ) {
+    Text("Chat staff", style = MaterialTheme.typography.titleLarge)
+
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+      Text("Activé", modifier = Modifier.weight(1f))
+      Switch(checked = enabled.value, onCheckedChange = { enabled.value = it })
+    }
+
+    if (channels.isNotEmpty()) {
+      IdPickerField(label = "Salon staff (channelId)", selectedId = channelId.value, items = channels, onChange = { channelId.value = it })
+    } else {
+      OutlinedTextField(
+        value = channelId.value,
+        onValueChange = { channelId.value = it },
+        label = { Text("channelId") },
+        modifier = Modifier.fillMaxWidth()
+      )
+    }
+
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+      Button(onClick = {
+        onSave(
+          JsonObject(
+            mapOf(
+              "enabled" to JsonPrimitive(enabled.value),
+              "channelId" to JsonPrimitive(channelId.value.trim()),
+            )
+          )
+        )
+      }) { Text("Sauvegarder") }
+      OutlinedButton(onClick = onBack) { Text("Retour") }
+    }
+  }
+}
+
