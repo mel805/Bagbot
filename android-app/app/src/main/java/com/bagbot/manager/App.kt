@@ -48,7 +48,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -96,7 +98,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
       busy.value = true
       try {
         JsonUtil.parseObject(newConfigJson)
-        api.putJson("/api/configs", newConfigJson)
+        withContext(Dispatchers.IO) {
+          api.putJson("/api/configs", newConfigJson)
+        }
         configJson.value = newConfigJson
         configEdit.value = newConfigJson
         snackbar.showSnackbar("Config sauvegardée")
@@ -139,9 +143,16 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     scope.launch {
       busy.value = true
       try {
-        statusJson.value = api.getJson("/api/bot/status")
-        meJson.value = api.getJson("/api/me")
-        configJson.value = api.getJson("/api/configs")
+        val (st, me, cfg) = withContext(Dispatchers.IO) {
+          Triple(
+            api.getJson("/api/bot/status"),
+            api.getJson("/api/me"),
+            api.getJson("/api/configs")
+          )
+        }
+        statusJson.value = st
+        meJson.value = me
+        configJson.value = cfg
         configEdit.value = configJson.value ?: ""
       } catch (e: Exception) {
         snackbar.showSnackbar("Erreur: ${e.message}")
@@ -155,7 +166,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     scope.launch {
       busy.value = true
       try {
-        val raw = api.getJson("/backups")
+        val raw = withContext(Dispatchers.IO) { api.getJson("/backups") }
         val obj = json.parseToJsonElement(raw).jsonObject
         val arr = obj["backups"]
         val list = if (arr is JsonArray) {
@@ -308,7 +319,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 scope.launch {
                   busy.value = true
                   try {
-                    api.postJson("/bot/control", """{"action":"restart"}""")
+                    withContext(Dispatchers.IO) {
+                      api.postJson("/bot/control", """{"action":"restart"}""")
+                    }
                     snackbar.showSnackbar("Restart envoyé")
                   } catch (e: Exception) {
                     snackbar.showSnackbar("Erreur: ${e.message}")
@@ -321,7 +334,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 scope.launch {
                   busy.value = true
                   try {
-                    api.postJson("/bot/control", """{"action":"deploy"}""")
+                    withContext(Dispatchers.IO) {
+                      api.postJson("/bot/control", """{"action":"deploy"}""")
+                    }
                     snackbar.showSnackbar("Déploiement commandes lancé")
                   } catch (e: Exception) {
                     snackbar.showSnackbar("Erreur: ${e.message}")
@@ -447,7 +462,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 scope.launch {
                   busy.value = true
                   try {
-                    api.postJson("/backup", "{}")
+                    withContext(Dispatchers.IO) {
+                      api.postJson("/backup", "{}")
+                    }
                     snackbar.showSnackbar("Backup créé")
                     refreshBackups()
                   } catch (e: Exception) {
@@ -474,7 +491,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                           scope.launch {
                             busy.value = true
                             try {
-                              api.postJson("/restore", """{"filename":"${b.filename}"}""")
+                              withContext(Dispatchers.IO) {
+                                api.postJson("/restore", """{"filename":"${b.filename}"}""")
+                              }
                               snackbar.showSnackbar("Restore lancé")
                               refreshAll()
                             } catch (e: Exception) {

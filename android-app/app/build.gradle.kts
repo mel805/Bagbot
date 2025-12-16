@@ -11,13 +11,32 @@ android {
     applicationId = "com.bagbot.manager"
     minSdk = 24
     targetSdk = 34
-    versionCode = 1
-    versionName = "1.0.0"
+    // CI passes these via -PVERSION_CODE / -PVERSION_NAME
+    val vc = (project.findProperty("VERSION_CODE") as String?)?.toIntOrNull() ?: 1
+    val vn = (project.findProperty("VERSION_NAME") as String?) ?: "dev"
+    versionCode = vc
+    versionName = vn
+  }
+
+  signingConfigs {
+    create("release") {
+      val ksPath = System.getenv("ANDROID_KEYSTORE_PATH")
+      val ksPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+      val keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+      val keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+
+      if (!ksPath.isNullOrBlank()) storeFile = file(ksPath)
+      if (!ksPassword.isNullOrBlank()) storePassword = ksPassword
+      if (!keyAlias.isNullOrBlank()) this.keyAlias = keyAlias
+      if (!keyPassword.isNullOrBlank()) this.keyPassword = keyPassword
+    }
   }
 
   buildTypes {
     release {
       isMinifyEnabled = false
+      // For Play/update installs you need a stable signing key (configured via env in CI).
+      signingConfig = signingConfigs.getByName("release")
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
         "proguard-rules.pro"
