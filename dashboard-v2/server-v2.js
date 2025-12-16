@@ -2697,8 +2697,13 @@ app.listen(PORT, () => {
   console.log(`✓ Access: http://localhost:${PORT}`);
   console.log(`✓ Discord API integration enabled`);
   console.log(`✓ Secrets file: ${DASHBOARD_SECRETS_PATH}`);
-  if (!DISCORD_OAUTH_CLIENT_ID || !DISCORD_OAUTH_CLIENT_SECRET) {
-    console.log('⚠️ Discord login is not configured yet (missing DISCORD_OAUTH_CLIENT_ID/SECRET).');
-    console.log('   Add them to .env OR set "discordOAuthClientSecret" in dashboard-secrets.json.');
-  }
+  // Async check (don't crash the process on missing env vars).
+  void (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) {
+      console.log('⚠️ Discord login is not configured yet (missing OAuth client id/secret).');
+      console.log('   Set DISCORD_OAUTH_CLIENT_ID/SECRET in PM2 env or dashboard-secrets.json.');
+    }
+  })().catch(() => {});
 });
