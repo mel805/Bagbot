@@ -129,6 +129,22 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     }
   }
 
+  fun parseMembersNames(jsonBody: String): Map<String, String> {
+    return try {
+      val el = json.parseToJsonElement(jsonBody)
+      val obj = el.jsonObject
+      val namesEl = obj["names"]
+      if (namesEl is JsonObject) {
+        namesEl.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
+      } else {
+        // backward compatibility: if server returns a plain map
+        obj.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
+      }
+    } catch (_: Exception) {
+      emptyMap()
+    }
+  }
+
   fun refreshDiscordMeta() {
     scope.launch {
       if (!ensureBaseUrlOrWarn()) return@launch
@@ -146,22 +162,6 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
       } catch (_: Exception) {
         // Non-bloquant: les écrans peuvent fallback sur saisie d'ID.
       }
-    }
-  }
-
-  fun parseMembersNames(jsonBody: String): Map<String, String> {
-    return try {
-      val el = json.parseToJsonElement(jsonBody)
-      val obj = el.jsonObject
-      val namesEl = obj["names"]
-      if (namesEl is JsonObject) {
-        namesEl.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
-      } else {
-        // backward compatibility: if server returns a plain map
-        obj.mapValues { (_, v) -> (v as? JsonPrimitive)?.content ?: "" }.filterValues { it.isNotBlank() }
-      }
-    } catch (_: Exception) {
-      emptyMap()
     }
   }
 
