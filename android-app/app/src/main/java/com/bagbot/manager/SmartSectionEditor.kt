@@ -186,6 +186,9 @@ fun SmartSectionEditor(
             )
           }
         }
+        else -> {
+          // ignore nested objects/nulls in smart mode
+        }
       }
     }
 
