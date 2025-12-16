@@ -113,10 +113,30 @@ function loadOrCreateSecrets() {
 const DASHBOARD_SECRETS = loadOrCreateSecrets();
 
 // ========= Discord OAuth2 (login) =========
-// Note: client secret must come from your Discord Developer Portal, but can be stored in dashboard-secrets.json instead of .env
-const DISCORD_OAUTH_CLIENT_ID = (process.env.DISCORD_OAUTH_CLIENT_ID || process.env.CLIENT_ID || '').trim();
-const DISCORD_OAUTH_CLIENT_SECRET = (process.env.DISCORD_OAUTH_CLIENT_SECRET || DASHBOARD_SECRETS.discordOAuthClientSecret || '').trim();
+// IMPORTANT: Never embed OAuth client secret in the Android app.
+// We can load it from:
+// - process.env (dotenv / systemd / pm2)
+// - PM2 process env (dashboard/bagbot) via getEnvFromBot()
+// - dashboard-secrets.json (recommended for Freebox)
 const DISCORD_OAUTH_REDIRECT_URI = (process.env.DISCORD_OAUTH_REDIRECT_URI || '').trim(); // optional: auto-derived from request if empty
+
+async function getDiscordOAuthClientId() {
+  return (
+    (process.env.DISCORD_OAUTH_CLIENT_ID || '').trim() ||
+    (process.env.CLIENT_ID || '').trim() ||
+    (await getEnvFromBot('DISCORD_OAUTH_CLIENT_ID')) ||
+    (await getEnvFromBot('CLIENT_ID')) ||
+    (DASHBOARD_SECRETS.discordOAuthClientId || '').trim()
+  );
+}
+
+async function getDiscordOAuthClientSecret() {
+  return (
+    (process.env.DISCORD_OAUTH_CLIENT_SECRET || '').trim() ||
+    (await getEnvFromBot('DISCORD_OAUTH_CLIENT_SECRET')) ||
+    (DASHBOARD_SECRETS.discordOAuthClientSecret || '').trim()
+  );
+}
 
 // ========= Session cookie (no .env token required for UI) =========
 const COOKIE_NAME = 'dash_sid';
@@ -329,29 +349,33 @@ app.get('/auth/logout', (req, res) => {
 });
 
 app.get('/auth/discord', (req, res) => {
-  if (!DISCORD_OAUTH_CLIENT_ID) {
-    return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_ID (or CLIENT_ID).');
-  }
-  if (!DISCORD_OAUTH_CLIENT_SECRET) {
-    return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_SECRET (set it in .env or dashboard-secrets.json).');
-  }
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
-  const redirectUri = DISCORD_OAUTH_REDIRECT_URI || `${proto}://${host}/auth/discord/callback`;
+  (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId) return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_ID (or CLIENT_ID).');
+    if (!clientSecret) return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_SECRET (set it in PM2 env or dashboard-secrets.json).');
 
-  const state = crypto.randomBytes(18).toString('hex');
-  // Keep state in-memory for 10 minutes
-  SESSIONS.set(`state:${state}`, { createdAt: Date.now() });
-  setTimeout(() => SESSIONS.delete(`state:${state}`), 10 * 60 * 1000).unref?.();
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = DISCORD_OAUTH_REDIRECT_URI || `${proto}://${host}/auth/discord/callback`;
 
-  const params = new URLSearchParams({
-    client_id: DISCORD_OAUTH_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'identify guilds',
-    state
+    const state = crypto.randomBytes(18).toString('hex');
+    // Keep state in-memory for 10 minutes
+    SESSIONS.set(`state:${state}`, { createdAt: Date.now() });
+    setTimeout(() => SESSIONS.delete(`state:${state}`), 10 * 60 * 1000).unref?.();
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify guilds',
+      state
+    });
+    return res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+  })().catch((err) => {
+    console.error('Error in /auth/discord:', err);
+    res.status(500).send('Auth error');
   });
-  res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
 });
 
 app.get('/auth/discord/callback', async (req, res) => {
@@ -367,9 +391,13 @@ app.get('/auth/discord/callback', async (req, res) => {
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
     const redirectUri = DISCORD_OAUTH_REDIRECT_URI || `${proto}://${host}/auth/discord/callback`;
 
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) return res.status(500).send('Discord OAuth is not configured.');
+
     const tokenBody = new URLSearchParams({
-      client_id: DISCORD_OAUTH_CLIENT_ID,
-      client_secret: DISCORD_OAUTH_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'authorization_code',
       code,
       redirect_uri: redirectUri
@@ -419,25 +447,32 @@ app.get('/auth/discord/callback', async (req, res) => {
 //   bagbot://auth?token=<bearer>&user=<username>
 app.get('/auth/mobile/start', (req, res) => {
   const appRedirect = String(req.query.app_redirect || 'bagbot://auth');
-  if (!DISCORD_OAUTH_CLIENT_ID || !DISCORD_OAUTH_CLIENT_SECRET) {
-    return res.status(500).send('Discord login is not configured.');
-  }
-  const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
-  const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
-  const redirectUri = `${proto}://${host}/auth/mobile/callback`;
+  (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).send('Discord login is not configured (missing OAuth client id/secret).');
+    }
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = `${proto}://${host}/auth/mobile/callback`;
 
-  const state = crypto.randomBytes(18).toString('hex');
-  SESSIONS.set(`mstate:${state}`, { createdAt: Date.now(), appRedirect });
-  setTimeout(() => SESSIONS.delete(`mstate:${state}`), 10 * 60 * 1000).unref?.();
+    const state = crypto.randomBytes(18).toString('hex');
+    SESSIONS.set(`mstate:${state}`, { createdAt: Date.now(), appRedirect });
+    setTimeout(() => SESSIONS.delete(`mstate:${state}`), 10 * 60 * 1000).unref?.();
 
-  const params = new URLSearchParams({
-    client_id: DISCORD_OAUTH_CLIENT_ID,
-    redirect_uri: redirectUri,
-    response_type: 'code',
-    scope: 'identify guilds',
-    state
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify guilds',
+      state
+    });
+    return res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+  })().catch((err) => {
+    console.error('Error in /auth/mobile/start:', err);
+    res.status(500).send('Auth error');
   });
-  res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
 });
 
 app.get('/auth/mobile/callback', async (req, res) => {
@@ -453,9 +488,13 @@ app.get('/auth/mobile/callback', async (req, res) => {
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
     const redirectUri = `${proto}://${host}/auth/mobile/callback`;
 
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) return res.status(500).send('Discord OAuth is not configured.');
+
     const tokenBody = new URLSearchParams({
-      client_id: DISCORD_OAUTH_CLIENT_ID,
-      client_secret: DISCORD_OAUTH_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'authorization_code',
       code,
       redirect_uri: redirectUri
