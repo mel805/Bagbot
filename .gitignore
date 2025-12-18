@@ -47,6 +47,10 @@ data/
 *.json.backup
 *.json.old
 
+# Dashboard runtime data (sessions/secrets) - never commit
+dashboard-v2/data/
+dashboard-secrets.json
+
 # Archives
 *.zip
 *.rar

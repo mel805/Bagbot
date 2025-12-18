@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { exec } = require('child_process');
 const https = require('https');
 const fileUpload = require('express-fileupload');
@@ -31,10 +32,579 @@ const app = express();
 //   debug: false
 // }));
 
-const PORT = 3002;
+const PORT = Number(process.env.DASHBOARD_PORT || process.env.PORT || 33002);
 
-app.use(express.json({limit: '50mb'}));
-app.use(express.urlencoded({limit: '50mb', extended: true}));
+// Capture raw body for webhook signature validation (HMAC).
+app.use(express.json({
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+app.use(express.urlencoded({
+  limit: '50mb',
+  extended: true,
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
+
+// ========= Secrets (Freebox-friendly): load from file, auto-generate keys =========
+function isBrokenSymlink(p) {
+  try {
+    const st = fs.lstatSync(p);
+    if (!st.isSymbolicLink()) return false;
+    // If it's a symlink, check target exists
+    try {
+      fs.statSync(p);
+      return false;
+    } catch {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function ensureWritableDir(dirPath) {
+  if (!dirPath) return null;
+  try {
+    const p = path.resolve(dirPath);
+    if (isBrokenSymlink(p)) return null;
+    if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+    fs.accessSync(p, fs.constants.W_OK);
+    return p;
+  } catch {
+    return null;
+  }
+}
+
+const DATA_DIR =
+  ensureWritableDir(process.env.DATA_DIR) ||
+  ensureWritableDir(path.join(__dirname, '../data')) ||
+  ensureWritableDir(path.join(__dirname, './data')) ||
+  ensureWritableDir(path.join(process.cwd(), '.data')) ||
+  path.join(__dirname, './data'); // last resort (may fail later)
+
+const DASHBOARD_SECRETS_PATH = process.env.DASHBOARD_SECRETS_PATH
+  ? path.resolve(process.env.DASHBOARD_SECRETS_PATH)
+  : path.join(DATA_DIR, 'dashboard-secrets.json');
+
+function loadOrCreateSecrets() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(DASHBOARD_SECRETS_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(DASHBOARD_SECRETS_PATH, 'utf8'));
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    }
+    const created = {
+      createdAt: new Date().toISOString(),
+      cookieSecret: crypto.randomBytes(48).toString('hex'),
+      webhookSecret: crypto.randomBytes(32).toString('hex')
+    };
+    fs.writeFileSync(DASHBOARD_SECRETS_PATH, JSON.stringify(created, null, 2), 'utf8');
+    return created;
+  } catch (err) {
+    console.error('⚠️ Failed to load/create dashboard secrets:', err);
+    return {};
+  }
+}
+
+const DASHBOARD_SECRETS = loadOrCreateSecrets();
+
+// ========= Discord OAuth2 (login) =========
+// IMPORTANT: Never embed OAuth client secret in the Android app.
+// We can load it from:
+// - process.env (dotenv / systemd / pm2)
+// - PM2 process env (dashboard/bagbot) via getEnvFromBot()
+// - dashboard-secrets.json (recommended for Freebox)
+const DISCORD_OAUTH_REDIRECT_URI = (process.env.DISCORD_OAUTH_REDIRECT_URI || '').trim(); // optional: auto-derived from request if empty
+
+async function getDiscordOAuthClientId() {
+  return (
+    (process.env.DISCORD_OAUTH_CLIENT_ID || '').trim() ||
+    (process.env.CLIENT_ID || '').trim() ||
+    (await getEnvFromBot('DISCORD_OAUTH_CLIENT_ID')) ||
+    (await getEnvFromBot('CLIENT_ID')) ||
+    (DASHBOARD_SECRETS.discordOAuthClientId || '').trim()
+  );
+}
+
+async function getDiscordOAuthClientSecret() {
+  return (
+    (process.env.DISCORD_OAUTH_CLIENT_SECRET || '').trim() ||
+    (await getEnvFromBot('DISCORD_OAUTH_CLIENT_SECRET')) ||
+    (DASHBOARD_SECRETS.discordOAuthClientSecret || '').trim()
+  );
+}
+
+// ========= Session cookie (no .env token required for UI) =========
+const COOKIE_NAME = 'dash_sid';
+const COOKIE_TTL_MS = Number(process.env.DASHBOARD_SESSION_TTL_MS || 12 * 60 * 60 * 1000); // 12h
+const SESSIONS = new Map(); // sid -> { userId, username, isAdmin, accessToken, expiresAt }
+
+// ========= Mobile token auth (Bearer) =========
+// The Android app uses a signed Bearer token (HMAC) instead of cookies.
+// Server issues it after Discord OAuth2 check; app sends it in Authorization header.
+const MOBILE_TOKEN_TTL_MS = Number(process.env.DASHBOARD_MOBILE_TOKEN_TTL_MS || 7 * 24 * 60 * 60 * 1000); // 7 days
+
+function base64UrlEncode(buf) {
+  return Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+function base64UrlDecode(str) {
+  const s = String(str || '').replace(/-/g, '+').replace(/_/g, '/');
+  const pad = s.length % 4 === 0 ? '' : '='.repeat(4 - (s.length % 4));
+  return Buffer.from(s + pad, 'base64');
+}
+function signMobileToken(payloadObj) {
+  const payload = Buffer.from(JSON.stringify(payloadObj), 'utf8');
+  const payloadB64 = base64UrlEncode(payload);
+  const sig = crypto.createHmac('sha256', DASHBOARD_SECRETS.cookieSecret || 'fallback-secret')
+    .update(payloadB64)
+    .digest();
+  const sigB64 = base64UrlEncode(sig);
+  return `${payloadB64}.${sigB64}`;
+}
+function verifyMobileToken(token) {
+  const t = String(token || '');
+  const parts = t.split('.');
+  if (parts.length !== 2) return { ok: false, error: 'Malformed token' };
+  const [payloadB64, sigB64] = parts;
+  const expectedSig = crypto.createHmac('sha256', DASHBOARD_SECRETS.cookieSecret || 'fallback-secret')
+    .update(payloadB64)
+    .digest();
+  const providedSig = base64UrlDecode(sigB64);
+  if (providedSig.length !== expectedSig.length || !crypto.timingSafeEqual(providedSig, expectedSig)) {
+    return { ok: false, error: 'Bad signature' };
+  }
+  let payload;
+  try {
+    payload = JSON.parse(base64UrlDecode(payloadB64).toString('utf8'));
+  } catch {
+    return { ok: false, error: 'Bad payload' };
+  }
+  if (!payload || typeof payload !== 'object') return { ok: false, error: 'Bad payload' };
+  if (payload.exp && Date.now() > Number(payload.exp)) return { ok: false, error: 'Expired' };
+  if (!payload.admin) return { ok: false, error: 'Not admin' };
+  return { ok: true, payload };
+}
+
+function parseCookies(cookieHeader) {
+  const out = {};
+  const str = String(cookieHeader || '');
+  if (!str) return out;
+  for (const part of str.split(';')) {
+    const idx = part.indexOf('=');
+    if (idx === -1) continue;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (k) out[k] = decodeURIComponent(v);
+  }
+  return out;
+}
+
+function setCookie(res, name, value, opts = {}) {
+  const parts = [`${name}=${encodeURIComponent(value)}`];
+  parts.push(`Path=${opts.path || '/'}`);
+  if (opts.httpOnly !== false) parts.push('HttpOnly');
+  parts.push(`SameSite=${opts.sameSite || 'Lax'}`);
+  if (opts.secure) parts.push('Secure');
+  if (typeof opts.maxAge === 'number') parts.push(`Max-Age=${Math.floor(opts.maxAge)}`);
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+function clearCookie(res, name) {
+  setCookie(res, name, '', { maxAge: 0 });
+}
+
+function getSession(req) {
+  const cookies = parseCookies(req.headers.cookie);
+  const sid = cookies[COOKIE_NAME];
+  if (!sid) return null;
+  const sess = SESSIONS.get(sid);
+  if (!sess) return null;
+  if (sess.expiresAt && Date.now() > sess.expiresAt) {
+    SESSIONS.delete(sid);
+    return null;
+  }
+  return { sid, ...sess };
+}
+
+async function discordFetch(pathname, { method = 'GET', headers = {}, body } = {}) {
+  const res = await fetch(`https://discord.com/api/v10${pathname}`, {
+    method,
+    headers,
+    body
+  });
+  const text = await res.text();
+  const data = text ? (() => { try { return JSON.parse(text); } catch { return text; } })() : null;
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function checkUserIsGuildAdmin(accessToken, guildId) {
+  // Use /users/@me/guilds and check ADMINISTRATOR bit (0x8).
+  const guilds = await discordFetch('/users/@me/guilds', {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  if (!guilds.ok || !Array.isArray(guilds.data)) return { ok: false, error: 'Failed to fetch user guilds' };
+  const entry = guilds.data.find(g => String(g.id) === String(guildId));
+  if (!entry) return { ok: false, error: 'User is not in this guild' };
+  const perms = BigInt(entry.permissions || 0);
+  const isAdmin = (perms & 0x8n) === 0x8n;
+  return { ok: true, isAdmin };
+}
+
+function wantsHtml(req) {
+  const accept = String(req.headers.accept || '');
+  return accept.includes('text/html');
+}
+
+// ========= Security: Discord-admin-only access (+ optional legacy Bearer token) =========
+const DASHBOARD_ADMIN_TOKEN = (process.env.DASHBOARD_ADMIN_TOKEN || '').trim(); // legacy/automation fallback
+function timingSafeEqualStr(a, b) {
+  const aBuf = Buffer.from(String(a || ''), 'utf8');
+  const bBuf = Buffer.from(String(b || ''), 'utf8');
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
+
+function hasBearerAdminToken(req) {
+  if (!DASHBOARD_ADMIN_TOKEN) return false;
+  const header = String(req.headers.authorization || '');
+  const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+  return !!(token && timingSafeEqualStr(token, DASHBOARD_ADMIN_TOKEN));
+}
+
+function isDiscordAdminSession(req) {
+  const sess = getSession(req);
+  return !!(sess && sess.isAdmin);
+}
+
+function requireAdminAuth(req, res, next) {
+  // Allow if Discord session is admin
+  if (isDiscordAdminSession(req)) return next();
+
+  // Allow mobile Bearer token
+  const header = String(req.headers.authorization || '');
+  if (header.startsWith('Bearer ')) {
+    const t = header.slice('Bearer '.length).trim();
+    const v = verifyMobileToken(t);
+    if (v.ok) {
+      req.mobileAuth = v.payload;
+      return next();
+    }
+  }
+
+  // Allow optional legacy bearer token (automation)
+  if (hasBearerAdminToken(req)) return next();
+  return res.status(401).json({ error: 'Unauthorized' });
+}
+
+// ========= Webhook (signed) =========
+// POST /webhook/<action>
+// Header: X-Signature: sha256=<hex>  (or just <hex>)
+// Body: JSON, signature computed on raw bytes.
+const WEBHOOK_SECRET = (process.env.DASHBOARD_WEBHOOK_SECRET || DASHBOARD_SECRETS.webhookSecret || '').trim();
+function verifyWebhook(req, res, next) {
+  if (!WEBHOOK_SECRET) return res.status(400).json({ error: 'Webhook disabled (missing DASHBOARD_WEBHOOK_SECRET)' });
+  const header = String(req.headers['x-signature'] || req.headers['x-bag-signature'] || '');
+  const provided = header.startsWith('sha256=') ? header.slice('sha256='.length) : header;
+  const raw = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from('', 'utf8');
+  const expected = crypto.createHmac('sha256', WEBHOOK_SECRET).update(raw).digest('hex');
+  if (!provided || !timingSafeEqualStr(provided, expected)) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+  return next();
+}
+
+// ========= Public auth routes =========
+app.get('/login', (req, res) => {
+  const sess = getSession(req);
+  if (sess?.isAdmin) return res.redirect('/dash');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(`<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Connexion Dashboard</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0d0d0d;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+.card{background:#151515;border:1px solid #333;border-radius:12px;padding:24px;max-width:520px;width:92%}
+a.btn{display:inline-block;background:#5865F2;color:#fff;text-decoration:none;padding:12px 16px;border-radius:10px;font-weight:700}
+.muted{color:#aaa;font-size:14px;line-height:1.4}
+code{background:#222;padding:2px 6px;border-radius:6px}
+</style></head>
+<body><div class="card">
+<h2>Connexion requise</h2>
+<p class="muted">Accès réservé aux admins du serveur Discord configuré (<code>GUILD_ID</code>).</p>
+<p><a class="btn" href="/auth/discord">Se connecter avec Discord</a></p>
+<p class="muted">Si tu as changé l’URL/port, ouvre le dashboard via l’IP de ta Freebox.</p>
+</div></body></html>`);
+});
+
+app.get('/auth/logout', (req, res) => {
+  const sess = getSession(req);
+  if (sess?.sid) SESSIONS.delete(sess.sid);
+  clearCookie(res, COOKIE_NAME);
+  res.redirect('/login');
+});
+
+app.get('/auth/discord', (req, res) => {
+  (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId) return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_ID (or CLIENT_ID).');
+    if (!clientSecret) return res.status(500).send('Missing DISCORD_OAUTH_CLIENT_SECRET (set it in PM2 env or dashboard-secrets.json).');
+
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = DISCORD_OAUTH_REDIRECT_URI || `${proto}://${host}/auth/discord/callback`;
+
+    const state = crypto.randomBytes(18).toString('hex');
+    // Keep state in-memory for 10 minutes
+    SESSIONS.set(`state:${state}`, { createdAt: Date.now() });
+    setTimeout(() => SESSIONS.delete(`state:${state}`), 10 * 60 * 1000).unref?.();
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify guilds',
+      state
+    });
+    return res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+  })().catch((err) => {
+    console.error('Error in /auth/discord:', err);
+    res.status(500).send('Auth error');
+  });
+});
+
+app.get('/auth/discord/callback', async (req, res) => {
+  try {
+    const code = String(req.query.code || '');
+    const state = String(req.query.state || '');
+    const stateKey = `state:${state}`;
+    const stateObj = SESSIONS.get(stateKey);
+    SESSIONS.delete(stateKey);
+    if (!code || !stateObj) return res.status(400).send('Invalid OAuth state.');
+
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = DISCORD_OAUTH_REDIRECT_URI || `${proto}://${host}/auth/discord/callback`;
+
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) return res.status(500).send('Discord OAuth is not configured.');
+
+    const tokenBody = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri
+    });
+    const tokenRes = await discordFetch('/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody.toString()
+    });
+    if (!tokenRes.ok) {
+      console.error('OAuth token exchange failed:', tokenRes.status, tokenRes.data);
+      return res.status(502).send('OAuth token exchange failed.');
+    }
+    const accessToken = tokenRes.data?.access_token;
+    if (!accessToken) return res.status(502).send('Missing access token.');
+
+    const me = await discordFetch('/users/@me', { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!me.ok) return res.status(502).send('Failed to fetch user profile.');
+
+    // Determine guild + admin
+    const guildId = process.env.GUILD_ID || process.env.FORCE_GUILD_ID || '1360897918504271882';
+    const permCheck = await checkUserIsGuildAdmin(accessToken, guildId);
+    if (!permCheck.ok) return res.status(403).send(`Access denied: ${permCheck.error}`);
+    if (!permCheck.isAdmin) return res.status(403).send('Access denied: you must be an admin of the Discord server.');
+
+    const sid = crypto.randomBytes(24).toString('hex');
+    SESSIONS.set(sid, {
+      userId: me.data?.id,
+      username: me.data?.username,
+      isAdmin: true,
+      accessToken,
+      expiresAt: Date.now() + COOKIE_TTL_MS
+    });
+    setCookie(res, COOKIE_NAME, sid, { maxAge: COOKIE_TTL_MS / 1000 });
+    return res.redirect('/dash');
+  } catch (err) {
+    console.error('OAuth callback error:', err);
+    return res.status(500).send('OAuth callback error.');
+  }
+});
+
+// ========= Mobile OAuth start/callback =========
+// Flow:
+// - App opens:  GET <base>/auth/mobile/start?app_redirect=bagbot://auth
+// - Server redirects to Discord authorize (redirect_uri is server callback)
+// - Callback exchanges code, checks ADMINISTRATOR on GUILD_ID, then redirects to:
+//   bagbot://auth?token=<bearer>&user=<username>
+app.get('/auth/mobile/start', (req, res) => {
+  const appRedirect = String(req.query.app_redirect || 'bagbot://auth');
+  (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) {
+      return res.status(500).send('Discord login is not configured (missing OAuth client id/secret).');
+    }
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = `${proto}://${host}/auth/mobile/callback`;
+
+    const state = crypto.randomBytes(18).toString('hex');
+    SESSIONS.set(`mstate:${state}`, { createdAt: Date.now(), appRedirect });
+    setTimeout(() => SESSIONS.delete(`mstate:${state}`), 10 * 60 * 1000).unref?.();
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'identify guilds',
+      state
+    });
+    return res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+  })().catch((err) => {
+    console.error('Error in /auth/mobile/start:', err);
+    res.status(500).send('Auth error');
+  });
+});
+
+app.get('/auth/mobile/callback', async (req, res) => {
+  try {
+    const code = String(req.query.code || '');
+    const state = String(req.query.state || '');
+    const stateKey = `mstate:${state}`;
+    const st = SESSIONS.get(stateKey);
+    SESSIONS.delete(stateKey);
+    if (!code || !st) return res.status(400).send('Invalid OAuth state.');
+
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'http');
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || `localhost:${PORT}`);
+    const redirectUri = `${proto}://${host}/auth/mobile/callback`;
+    const origin = `${proto}://${host}`;
+
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) return res.status(500).send('Discord OAuth is not configured.');
+
+    const tokenBody = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: redirectUri
+    });
+    const tokenRes = await discordFetch('/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenBody.toString()
+    });
+    if (!tokenRes.ok) return res.status(502).send('OAuth token exchange failed.');
+    const accessToken = tokenRes.data?.access_token;
+    if (!accessToken) return res.status(502).send('Missing access token.');
+
+    const me = await discordFetch('/users/@me', { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!me.ok) return res.status(502).send('Failed to fetch user profile.');
+
+    const guildId = process.env.GUILD_ID || process.env.FORCE_GUILD_ID || '1360897918504271882';
+    const permCheck = await checkUserIsGuildAdmin(accessToken, guildId);
+    if (!permCheck.ok || !permCheck.isAdmin) return res.status(403).send('Access denied.');
+
+    const mobileToken = signMobileToken({
+      v: 1,
+      admin: true,
+      uid: me.data?.id,
+      u: me.data?.username,
+      gid: guildId,
+      exp: Date.now() + MOBILE_TOKEN_TTL_MS
+    });
+
+    const appRedirect = String(st.appRedirect || 'bagbot://auth');
+    const url = new URL(appRedirect);
+    url.searchParams.set('token', mobileToken);
+    if (me.data?.username) url.searchParams.set('user', me.data.username);
+    // Let the app persist the dashboard base URL automatically after OAuth
+    url.searchParams.set('base', origin);
+    // Some in-app browsers (e.g. Discord) can block direct redirects to custom schemes.
+    // Return an HTML "Open app" page that attempts the redirect via JS + provides a fallback link.
+    const target = url.toString();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(`<!doctype html>
+<html lang="fr"><head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ouvrir l'application</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0d0d0d;color:#fff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+    .card{background:#151515;border:1px solid #333;border-radius:12px;padding:22px;max-width:560px;width:92%}
+    a.btn{display:inline-block;background:#5865F2;color:#fff;text-decoration:none;padding:12px 16px;border-radius:10px;font-weight:800}
+    .muted{color:#aaa;font-size:14px;line-height:1.4}
+    code{background:#222;padding:2px 6px;border-radius:6px;word-break:break-all}
+  </style>
+  <script>
+    // Try auto-open quickly
+    setTimeout(function(){ window.location.href = ${JSON.stringify(target)}; }, 50);
+  </script>
+</head>
+<body><div class="card">
+  <h2>Connexion terminée</h2>
+  <p class="muted">Si l'application ne s'ouvre pas automatiquement, appuie sur le bouton :</p>
+  <p><a class="btn" href="${target}">Ouvrir l'app</a></p>
+  <p class="muted">Lien (debug): <code>${target}</code></p>
+</div></body></html>`);
+  } catch (err) {
+    console.error('Mobile OAuth callback error:', err);
+    res.status(500).send('Mobile OAuth callback error.');
+  }
+});
+
+app.get('/api/me', (req, res) => {
+  const sess = getSession(req);
+  if (sess) return res.json({ userId: sess.userId, username: sess.username, isAdmin: !!sess.isAdmin });
+  const header = String(req.headers.authorization || '');
+  if (header.startsWith('Bearer ')) {
+    const t = header.slice('Bearer '.length).trim();
+    const v = verifyMobileToken(t);
+    if (v.ok) return res.json({ userId: v.payload.uid, username: v.payload.u, isAdmin: true, via: 'mobile_token' });
+  }
+  return res.status(401).json({ error: 'Not logged in' });
+});
+
+// ========= Global access guard =========
+app.use((req, res, next) => {
+  // Public endpoints
+  if (req.path === '/health') return next();
+  if (req.path === '/login') return next();
+  if (req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/webhook/')) return next(); // webhooks are validated separately
+
+  // Allow Discord-admin session
+  if (isDiscordAdminSession(req)) return next();
+
+  // Allow mobile Bearer token
+  const header = String(req.headers.authorization || '');
+  if (header.startsWith('Bearer ')) {
+    const t = header.slice('Bearer '.length).trim();
+    const v = verifyMobileToken(t);
+    if (v.ok) {
+      req.mobileAuth = v.payload;
+      return next();
+    }
+  }
+
+  // Optional legacy token (automation / headless)
+  if (hasBearerAdminToken(req)) return next();
+
+  // Block everything else
+  if (wantsHtml(req)) return res.redirect('/login');
+  return res.status(401).json({ error: 'Unauthorized' });
+});
 
 // IMPORTANT: Routes spécifiques AVANT express.static pour éviter le cache
 
@@ -201,26 +771,29 @@ app.post('/restore', (req, res) => {
 });
 
 // Bot control
-app.post('/bot/control', (req, res) => {
+function restartBot(res) {
+  exec('pm2 restart bagbot', (error) => {
+    if (error) console.error('Error restarting bot:', error);
+  });
+  return res.json({ success: true, message: 'Bot restart initiated' });
+}
+function deployCommands(res) {
+  exec('node deploy-commands.js', (error) => {
+    if (error) console.error('Error deploying commands:', error);
+  });
+  return res.json({ success: true, message: 'Command deployment initiated' });
+}
+
+app.post('/bot/control', requireAdminAuth, (req, res) => {
   try {
     const { action } = req.body;
     
     if (action === 'restart') {
       // Restart the bot using PM2
-      exec('pm2 restart bagbot', (error, stdout, stderr) => {
-        if (error) {
-          console.error('Error restarting bot:', error);
-        }
-      });
-      res.json({ success: true, message: 'Bot restart initiated' });
+      return restartBot(res);
     } else if (action === 'deploy') {
       // Deploy commands
-      exec('cd /home/bagbot/Bag-bot && node deploy-commands.js', (error, stdout, stderr) => {
-        if (error) {
-          console.error('Error deploying commands:', error);
-        }
-      });
-      res.json({ success: true, message: 'Command deployment initiated' });
+      return deployCommands(res);
     } else {
       res.status(400).json({ error: 'Unknown action' });
     }
@@ -296,21 +869,71 @@ app.get('/api/bot/status', (req, res) => {
 // Route pour servir les GIFs hébergés localement
 app.use('/gifs', express.static(path.join(__dirname, 'public/gifs')));
 
-app.use(express.static('.'));
+// Serve only dashboard files (avoid exposing project root).
+app.use(express.static(__dirname));
 
 
-const CONFIG = path.join(__dirname, '../data/config.json');
-const GUILD = '1360897918504271882';
-const BACKUP_DIR = '/var/data/backups';
+const CONFIG = process.env.BAGBOT_CONFIG_PATH
+  ? path.resolve(process.env.BAGBOT_CONFIG_PATH)
+  : path.join(DATA_DIR, 'config.json');
+const GUILD = process.env.GUILD_ID || process.env.FORCE_GUILD_ID || '1360897918504271882';
+const BACKUP_DIR = process.env.BAGBOT_BACKUP_DIR
+  ? path.resolve(process.env.BAGBOT_BACKUP_DIR)
+  : '/var/data/backups';
 
-// Discord API credentials
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
+// ========= Discord token retrieval (Freebox-friendly) =========
+// Sources (in order):
+// 1) process.env.DISCORD_TOKEN (typically loaded from /home/bagbot/Bag-bot/.env by dotenv)
+// 2) PM2 process env (pm2 jlist) from "bagbot" or "dashboard"
+let pm2EnvCache = null;
+let pm2EnvCacheTime = 0;
+const PM2_ENV_CACHE_MS = 30 * 1000;
 
-if (!DISCORD_TOKEN) {
-  console.error('❌ DISCORD_TOKEN manquant dans .env');
-} else {
-  console.log('✓ Discord token chargé:', DISCORD_TOKEN.substring(0, 30) + '...');
+function getPm2EnvCached() {
+  const now = Date.now();
+  if (pm2EnvCache && (now - pm2EnvCacheTime) < PM2_ENV_CACHE_MS) return Promise.resolve(pm2EnvCache);
+  return new Promise((resolve) => {
+    exec('pm2 jlist', (error, stdout) => {
+      if (error || !stdout) {
+        pm2EnvCache = null;
+        pm2EnvCacheTime = now;
+        return resolve(null);
+      }
+      try {
+        const processes = JSON.parse(stdout);
+        const envs = {};
+        for (const name of ['bagbot', 'dashboard']) {
+          const proc = processes.find(p => p?.name === name);
+          const env = proc?.pm2_env?.env || proc?.pm2_env?.pm2_env || proc?.pm2_env || {};
+          envs[name] = env;
+        }
+        pm2EnvCache = envs;
+        pm2EnvCacheTime = now;
+        return resolve(envs);
+      } catch {
+        pm2EnvCache = null;
+        pm2EnvCacheTime = now;
+        return resolve(null);
+      }
+    });
+  });
 }
+
+async function getEnvFromBot(key) {
+  if (process.env[key]) return process.env[key];
+  const envs = await getPm2EnvCached();
+  if (!envs) return undefined;
+  return envs.bagbot?.[key] || envs.dashboard?.[key];
+}
+
+async function getDiscordBotToken() {
+  return (await getEnvFromBot('DISCORD_TOKEN')) || '';
+}
+
+// Never log the token value.
+getDiscordBotToken().then((t) => {
+  if (!t) console.warn('⚠️ DISCORD_TOKEN introuvable (ni env, ni PM2). Les endpoints Discord API échoueront.');
+}).catch(() => {});
 
 // Cache for channel names
 let channelsCache = null;
@@ -339,14 +962,16 @@ function writeConfig(data) {
 }
 
 // Fetch Discord channels
-function fetchDiscordChannels() {
+async function fetchDiscordChannels() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/channels`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -371,14 +996,16 @@ function fetchDiscordChannels() {
 }
 
 // Fetch Discord roles
-function fetchDiscordRoles() {
+async function fetchDiscordRoles() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/roles`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -440,13 +1067,15 @@ async function getRoles() {
 
 // Fetch Discord members with real names
 async function fetchDiscordMembers() {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
   return new Promise((resolve, reject) => {
     const options = {
       hostname: 'discord.com',
       path: `/api/v10/guilds/${GUILD}/members?limit=1000`,
       method: 'GET',
       headers: {
-        'Authorization': `Bot ${DISCORD_TOKEN}`,
+        'Authorization': `Bot ${token}`,
         'Content-Type': 'application/json'
       }
     };
@@ -609,6 +1238,26 @@ app.get('/api/configs', async (req, res) => {
   }
 });
 
+// Replace full guild config (mobile-friendly "edit everything")
+// Body must be the guild config object (not wrapped).
+app.put('/api/configs', requireAdminAuth, (req, res) => {
+  try {
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'JSON body required' });
+    }
+    const config = readConfig();
+    if (!config.guilds) config.guilds = {};
+    config.guilds[GUILD] = req.body;
+    if (writeConfig(config)) {
+      return res.json({ success: true });
+    }
+    return res.status(500).json({ error: 'Failed to save config' });
+  } catch (err) {
+    console.error('Error in PUT /api/configs:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get Discord channels
 app.get('/api/discord/channels', async (req, res) => {
   try {
@@ -639,6 +1288,92 @@ app.get('/api/discord/members', async (req, res) => {
   } catch (err) {
     console.error('Error in /api/discord/members:', err);
     res.status(500).json({ error: 'Failed to fetch members' });
+  }
+});
+
+// ===== Staff chat (proxy Discord messages) =====
+// Config: guildConfig.staffChat = { enabled: true, channelId: "123" }
+function getStaffChatChannelId() {
+  const config = readConfig();
+  const guildConfig = config.guilds?.[GUILD] || {};
+  const ch = guildConfig.staffChat?.channelId;
+  return typeof ch === 'string' ? ch : '';
+}
+
+async function discordBotApi(path, { method = 'GET', body = null } = {}) {
+  const token = await getDiscordBotToken();
+  if (!token) throw new Error('DISCORD_TOKEN missing');
+  const options = {
+    hostname: 'discord.com',
+    path: `/api/v10${path}`,
+    method,
+    headers: {
+      'Authorization': `Bot ${token}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => (data += chunk));
+      resp.on('end', () => {
+        let parsed = null;
+        try { parsed = data ? JSON.parse(data) : null; } catch (_) {}
+        if (resp.statusCode >= 200 && resp.statusCode < 300) return resolve(parsed);
+        const msg = parsed?.message || data || `Discord API error: ${resp.statusCode}`;
+        return reject(new Error(msg));
+      });
+    });
+    req.on('error', reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+app.get('/api/staff-chat/messages', requireAdminAuth, async (req, res) => {
+  try {
+    const channelId = getStaffChatChannelId();
+    if (!channelId) return res.status(400).json({ error: 'staffChat.channelId is not configured' });
+    const limit = Math.max(1, Math.min(100, Number(req.query.limit || 50)));
+    const messages = await discordBotApi(`/channels/${channelId}/messages?limit=${limit}`, { method: 'GET' });
+    const membersData = await getMembers().catch(() => ({}));
+    const names = membersData.names || membersData || {};
+
+    const out = (Array.isArray(messages) ? messages : []).map((m) => {
+      const authorId = m.author?.id || '';
+      const display =
+        m.member?.nick ||
+        m.author?.global_name ||
+        m.author?.username ||
+        names[authorId] ||
+        `User-${String(authorId).slice(-4)}`;
+      return {
+        id: m.id,
+        authorId,
+        authorName: display,
+        content: m.content || '',
+        timestamp: m.timestamp || ''
+      };
+    }).reverse();
+    return res.json({ channelId, messages: out });
+  } catch (err) {
+    console.error('Error in /api/staff-chat/messages:', err);
+    return res.status(500).json({ error: 'Failed to fetch staff chat messages' });
+  }
+});
+
+app.post('/api/staff-chat/send', requireAdminAuth, async (req, res) => {
+  try {
+    const channelId = getStaffChatChannelId();
+    if (!channelId) return res.status(400).json({ error: 'staffChat.channelId is not configured' });
+    const content = String(req.body?.content || '').trim();
+    if (!content) return res.status(400).json({ error: 'content is required' });
+    if (content.length > 1800) return res.status(400).json({ error: 'message too long' });
+    const created = await discordBotApi(`/channels/${channelId}/messages`, { method: 'POST', body: { content } });
+    return res.json({ success: true, id: created?.id || null });
+  } catch (err) {
+    console.error('Error in /api/staff-chat/send:', err);
+    return res.status(500).json({ error: 'Failed to send staff chat message' });
   }
 });
 
@@ -703,7 +1438,7 @@ app.get('/api/inactivity', async (req, res) => {
 });
 
 // Update inactivity config (format bot)
-app.post('/api/inactivity', (req, res) => {
+app.post('/api/inactivity', requireAdminAuth, (req, res) => {
   try {
     const config = readConfig();
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
@@ -734,7 +1469,7 @@ app.post('/api/inactivity', (req, res) => {
 });
 
 // Cleanup inactivity tracking - remove members who left
-app.post('/api/inactivity/cleanup', (req, res) => {
+app.post('/api/inactivity/cleanup', requireAdminAuth, (req, res) => {
   try {
     const { removeIds } = req.body;
     if (!Array.isArray(removeIds) || removeIds.length === 0) {
@@ -771,7 +1506,7 @@ app.post('/api/inactivity/cleanup', (req, res) => {
 });
 
 // Réinitialiser l inactivité d un membre spécifique
-app.post("/api/inactivity/reset/:userId", (req, res) => {
+app.post("/api/inactivity/reset/:userId", requireAdminAuth, (req, res) => {
   try {
     const { userId } = req.params;
     const config = readConfig();
@@ -798,7 +1533,7 @@ app.post("/api/inactivity/reset/:userId", (req, res) => {
 });
 
 // Ajouter automatiquement tous les membres au tracking  
-app.post("/api/inactivity/add-all-members", async (req, res) => {
+app.post("/api/inactivity/add-all-members", requireAdminAuth, async (req, res) => {
   try {
     const config = readConfig();
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
@@ -835,7 +1570,7 @@ app.post("/api/inactivity/add-all-members", async (req, res) => {
 
 
 // Update economy settings
-app.post('/api/economy', (req, res) => {
+app.post('/api/economy', requireAdminAuth, (req, res) => {
   try {
     const config = readConfig();
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
@@ -870,7 +1605,7 @@ app.post('/api/economy', (req, res) => {
 });
 
 // Update actions (GIFs, messages, config)
-app.post('/api/actions', async (req, res) => {
+app.post('/api/actions', requireAdminAuth, async (req, res) => {
   try {
     const { messages, config: actConfig } = req.body;
     let gifs = req.body.gifs;
@@ -916,7 +1651,7 @@ app.post('/api/actions', async (req, res) => {
 });
 
 // Update tickets configuration
-app.post('/api/tickets', (req, res) => {
+app.post('/api/tickets', requireAdminAuth, (req, res) => {
   try {
     console.log('📥 POST /api/tickets - Reçu:', Object.keys(req.body));
     const config = readConfig();
@@ -968,7 +1703,7 @@ app.post('/api/tickets', (req, res) => {
 });
 
 // Reload bot config (arrête bot pendant sauvegarde, puis redémarre)
-app.post('/api/bot/prepare-save', (req, res) => {
+app.post('/api/bot/prepare-save', requireAdminAuth, (req, res) => {
   const { exec } = require('child_process');
   console.log('🛑 Arrêt du bot pour sauvegarde config...');
   exec('pm2 stop bagbot', (err, stdout, stderr) => {
@@ -981,7 +1716,7 @@ app.post('/api/bot/prepare-save', (req, res) => {
   });
 });
 
-app.post('/api/bot/finish-save', (req, res) => {
+app.post('/api/bot/finish-save', requireAdminAuth, (req, res) => {
   const { exec } = require('child_process');
   console.log('▶️ Redémarrage du bot avec nouvelle config...');
   exec('pm2 restart bagbot', (err, stdout, stderr) => {
@@ -995,7 +1730,7 @@ app.post('/api/bot/finish-save', (req, res) => {
 });
 
 // Update confess configuration
-app.post('/api/confess', (req, res) => {
+app.post('/api/confess', requireAdminAuth, (req, res) => {
   try {
     const config = readConfig();
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
@@ -1030,7 +1765,7 @@ require('./welcome-routes')(app, readConfig, writeConfig, GUILD);
 
 // GET /api/music - Récupérer les playlists et uploads
 // POST /api/music/playlist - Créer/modifier une playlist
-app.post('/api/music/playlist', (req, res) => {
+app.post('/api/music/playlist', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name, tracks } = req.body;
     const playlistsPath = path.join(__dirname, '../data/playlists');
@@ -1059,7 +1794,7 @@ app.post('/api/music/playlist', (req, res) => {
 // POST /api/music/upload - Upload un fichier audio
 
 // DELETE /api/music/playlist/:guildId/:name
-app.delete('/api/music/playlist/:guildId/:name', (req, res) => {
+app.delete('/api/music/playlist/:guildId/:name', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name } = req.params;
     const playlistsPath = path.join(__dirname, '../data/playlists');
@@ -1168,7 +1903,7 @@ app.get('/api/music/playlist/:guildId/:name', (req, res) => {
 });
 
 // POST /api/music/upload - Upload fichier audio
-app.post('/api/music/upload', upload.single('audio'), (req, res) => {
+app.post('/api/music/upload', requireAdminAuth, upload.single('audio'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'Aucun fichier' });
@@ -1182,7 +1917,7 @@ app.post('/api/music/upload', upload.single('audio'), (req, res) => {
 });
 
 // DELETE /api/music/upload/:filename - Supprimer un fichier uploadé
-app.delete('/api/music/upload/:filename', (req, res) => {
+app.delete('/api/music/upload/:filename', requireAdminAuth, (req, res) => {
   try {
     const { filename } = req.params;
     const uploadsPath = path.join(__dirname, '../data/uploads');
@@ -1202,7 +1937,7 @@ app.delete('/api/music/upload/:filename', (req, res) => {
 });
 
 // PUT /api/music/playlist/:guildId/:name - Renommer une playlist
-app.put('/api/music/playlist/:guildId/:name', (req, res) => {
+app.put('/api/music/playlist/:guildId/:name', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name } = req.params;
     const { newName } = req.body;
@@ -1265,7 +2000,7 @@ app.put('/api/music/playlist/:guildId/:name', (req, res) => {
 });
 
 // DELETE /api/music/playlist/:guildId/:name - Supprimer une playlist
-app.delete('/api/music/playlist/:guildId/:name', (req, res) => {
+app.delete('/api/music/playlist/:guildId/:name', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name } = req.params;
     const playlistsPath = path.join(__dirname, '../data/playlists');
@@ -1294,7 +2029,7 @@ app.delete('/api/music/playlist/:guildId/:name', (req, res) => {
 });
 
 // DELETE /api/music/playlist/:guildId/:name/track/:index - Supprimer une piste
-app.delete('/api/music/playlist/:guildId/:name/track/:index', (req, res) => {
+app.delete('/api/music/playlist/:guildId/:name/track/:index', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name, index } = req.params;
     const playlistsPath = path.join(__dirname, '../data/playlists');
@@ -1334,7 +2069,7 @@ app.delete('/api/music/playlist/:guildId/:name/track/:index', (req, res) => {
 });
 
 // POST /api/music/add-link - Télécharger et ajouter un lien YouTube/Spotify à une playlist
-app.post('/api/music/add-link', async (req, res) => {
+app.post('/api/music/add-link', requireAdminAuth, async (req, res) => {
   try {
     const { link, playlistName, guildId } = req.body;
     
@@ -1470,7 +2205,7 @@ app.post('/api/music/add-link', async (req, res) => {
 
 
 // POST /api/music/playlist/create - Créer une nouvelle playlist
-app.post('/api/music/playlist/create', (req, res) => {
+app.post('/api/music/playlist/create', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name } = req.body;
     
@@ -1519,7 +2254,7 @@ app.post('/api/music/playlist/create', (req, res) => {
 });
 
 // POST /api/music/playlist/:guildId/:name/add - Ajouter une piste à une playlist
-app.post('/api/music/playlist/:guildId/:name/add', (req, res) => {
+app.post('/api/music/playlist/:guildId/:name/add', requireAdminAuth, (req, res) => {
   try {
     const { guildId, name } = req.params;
     const { filename, title, author, duration } = req.body;
@@ -1594,7 +2329,7 @@ app.get('/api/truthdare/:mode', (req, res) => {
 });
 
 // Add a new prompt
-app.post('/api/truthdare/:mode', (req, res) => {
+app.post('/api/truthdare/:mode', requireAdminAuth, (req, res) => {
   try {
     const { mode } = req.params;
     const { type, text } = req.body;
@@ -1629,7 +2364,7 @@ app.post('/api/truthdare/:mode', (req, res) => {
 });
 
 // Edit a prompt
-app.patch('/api/truthdare/:mode/:id', (req, res) => {
+app.patch('/api/truthdare/:mode/:id', requireAdminAuth, (req, res) => {
   try {
     const { mode, id } = req.params;
     const { text } = req.body;
@@ -1661,7 +2396,7 @@ app.patch('/api/truthdare/:mode/:id', (req, res) => {
 });
 
 // Delete a prompt
-app.delete('/api/truthdare/:mode/:id', (req, res) => {
+app.delete('/api/truthdare/:mode/:id', requireAdminAuth, (req, res) => {
   try {
     const { mode, id } = req.params;
     if (!['sfw', 'nsfw'].includes(mode)) {
@@ -1689,7 +2424,7 @@ app.delete('/api/truthdare/:mode/:id', (req, res) => {
 });
 
 // Add a channel
-app.post('/api/truthdare/:mode/channels', (req, res) => {
+app.post('/api/truthdare/:mode/channels', requireAdminAuth, (req, res) => {
   try {
     const { mode } = req.params;
     const { channelId } = req.body;
@@ -1724,7 +2459,7 @@ app.post('/api/truthdare/:mode/channels', (req, res) => {
 });
 
 // Delete a channel
-app.delete('/api/truthdare/:mode/channels/:channelId', (req, res) => {
+app.delete('/api/truthdare/:mode/channels/:channelId', requireAdminAuth, (req, res) => {
   try {
     const { mode, channelId } = req.params;
     if (!['sfw', 'nsfw'].includes(mode)) {
@@ -1766,7 +2501,7 @@ app.get('/api/counting', (req, res) => {
 });
 
 // Update counting configuration
-app.post('/api/counting', (req, res) => {
+app.post('/api/counting', requireAdminAuth, (req, res) => {
   try {
     const { allowFormulas, channels } = req.body;
     const config = readConfig();
@@ -1795,7 +2530,7 @@ app.post('/api/counting', (req, res) => {
 });
 
 // Add counting channel
-app.post('/api/counting/channels', (req, res) => {
+app.post('/api/counting/channels', requireAdminAuth, (req, res) => {
   try {
     const { channelId } = req.body;
     if (!channelId) {
@@ -1828,7 +2563,7 @@ app.post('/api/counting/channels', (req, res) => {
 });
 
 // Delete counting channel
-app.delete('/api/counting/channels/:channelId', (req, res) => {
+app.delete('/api/counting/channels/:channelId', requireAdminAuth, (req, res) => {
   try {
     const { channelId } = req.params;
     const config = readConfig();
@@ -1881,7 +2616,7 @@ app.get('/api/welcome', (req, res) => {
 });
 
 // Update welcome configuration
-app.post('/api/welcome', (req, res) => {
+app.post('/api/welcome', requireAdminAuth, (req, res) => {
   try {
     const { welcome } = req.body;
     const config = readConfig();
@@ -1924,7 +2659,7 @@ app.get('/api/goodbye', (req, res) => {
 });
 
 // Update goodbye configuration
-app.post('/api/goodbye', (req, res) => {
+app.post('/api/goodbye', requireAdminAuth, (req, res) => {
   try {
     const { goodbye } = req.body;
     const config = readConfig();
@@ -2008,10 +2743,82 @@ app.post('/api/upload-gif-from-browser', async (req, res) => {
   }
 });
 
+// ========== Webhook actions (signed) ==========
+app.post('/webhook/restart', verifyWebhook, (req, res) => restartBot(res));
+app.post('/webhook/deploy-commands', verifyWebhook, (req, res) => deployCommands(res));
+app.post('/webhook/backup', verifyWebhook, (req, res) => {
+  // Reuse existing logic via a lightweight inline backup (same as /backup)
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const filename = `backup-${timestamp}.json`;
+    const backupPath = path.join(BACKUP_DIR, filename);
+    const config = readConfig();
+    fs.writeFileSync(backupPath, JSON.stringify(config, null, 2), 'utf8');
+    return res.json({ success: true, filename });
+  } catch (err) {
+    console.error('Error creating backup (webhook):', err);
+    return res.status(500).json({ error: 'Failed to create backup' });
+  }
+});
+
+// Send a Discord message (requires DISCORD_TOKEN)
+app.post('/webhook/message', verifyWebhook, async (req, res) => {
+  try {
+    const { channelId, content } = req.body || {};
+    if (!channelId || !content) return res.status(400).json({ error: 'channelId and content are required' });
+    const token = await getDiscordBotToken();
+    if (!token) return res.status(500).json({ error: 'DISCORD_TOKEN missing' });
+
+    const payload = JSON.stringify({ content: String(content).slice(0, 2000) });
+    const options = {
+      hostname: 'discord.com',
+      path: `/api/v10/channels/${channelId}/messages`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Bot ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+
+    const req2 = https.request(options, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => (data += chunk));
+      resp.on('end', () => {
+        if (resp.statusCode && resp.statusCode >= 200 && resp.statusCode < 300) {
+          return res.json({ success: true });
+        }
+        console.error('Discord API message error:', resp.statusCode, data);
+        return res.status(502).json({ error: 'Discord API error', status: resp.statusCode, details: data });
+      });
+    });
+    req2.on('error', (e) => {
+      console.error('Discord API request error:', e);
+      return res.status(502).json({ error: 'Discord API request failed' });
+    });
+    req2.write(payload);
+    req2.end();
+  } catch (err) {
+    console.error('Error in webhook message:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`✓ Dashboard V2 Server running on port ${PORT}`);
   console.log(`✓ Guild ID: ${GUILD}`);
   console.log(`✓ Config file: ${CONFIG}`);
   console.log(`✓ Access: http://localhost:${PORT}`);
   console.log(`✓ Discord API integration enabled`);
+  console.log(`✓ Secrets file: ${DASHBOARD_SECRETS_PATH}`);
+  // Async check (don't crash the process on missing env vars).
+  void (async () => {
+    const clientId = await getDiscordOAuthClientId();
+    const clientSecret = await getDiscordOAuthClientSecret();
+    if (!clientId || !clientSecret) {
+      console.log('⚠️ Discord login is not configured yet (missing OAuth client id/secret).');
+      console.log('   Set DISCORD_OAUTH_CLIENT_ID/SECRET in PM2 env or dashboard-secrets.json.');
+    }
+  })().catch(() => {});
 });
