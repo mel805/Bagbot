@@ -640,12 +640,13 @@ fun StaffMainScreen(
     snackbar: SnackbarHostState,
     members: Map<String, String>,
     userInfo: JsonObject?,
-    isFounder: Boolean  // NOUVEAU paramètre
+    isFounder: Boolean,
+    isAdmin: Boolean  // Vérification admin pour chat
 ) {
     var selectedStaffTab by remember { mutableStateOf(0) }
     
-    // Vérifier si l'utilisateur est admin/founder
-    if (!isFounder) {
+    // Vérifier si l'utilisateur est admin (pas juste founder)
+    if (!isAdmin && !isFounder) {
         // Afficher message si pas admin
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
@@ -727,6 +728,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     var userName by remember { mutableStateOf("") }
     var userId by remember { mutableStateOf("") }
     var isFounder by remember { mutableStateOf(false) }
+    var isAdmin by remember { mutableStateOf(false) }
+    var isAuthorized by remember { mutableStateOf(false) }
     
     // Créer userInfo JsonObject pour StaffChat
     val userInfo = remember(userId, userName) {
