@@ -14,7 +14,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import com.bagbot.manager.ui.theme.BagBotTheme
 import com.bagbot.manager.ui.screens.SplashScreen
@@ -59,8 +62,11 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
         if (!token.value.isNullOrBlank() && !baseUrl.value.isNullOrBlank()) {
             isLoading.value = true
             errorMessage.value = null
-            try {
+            
+            withContext(Dispatchers.IO) {
+                try {
                 // Récupérer infos utilisateur
+                Log.d("BAG_APP", "Fetching /api/me...")
                 try {
                     val meJson = api.getJson("/api/me")
                     val me = json.parseToJsonElement(meJson).jsonObject
