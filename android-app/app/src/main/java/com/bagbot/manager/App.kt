@@ -972,8 +972,6 @@ fun ConfigGroupsScreen(
     }
 }
 
-@Composable
-
 // ============================================
 // AFFICHAGE DES VRAIS NOMS (v2.1.5)
 // ============================================
@@ -1096,6 +1094,7 @@ fun renderKeyInfo(
     }
 }
 
+@Composable
 fun ConfigGroupDetailScreen(
     group: ConfigGroup,
     configData: JsonObject?,
