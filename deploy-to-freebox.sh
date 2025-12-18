@@ -14,8 +14,8 @@ PURPLE='\033[0;35m'
 NC='\033[0m'
 
 # Configuration Freebox
-FREEBOX_IP="82.67.65.98"
-FREEBOX_PORT="22222"
+FREEBOX_IP="88.174.155.230"
+FREEBOX_PORT="33000"  # Port modifié pour respecter la limite Freebox (>= 32675)
 FREEBOX_USER="bagbot"
 FREEBOX_PASSWORD="bagbot"
 FREEBOX_ROOT_PASSWORD="bagbot"
