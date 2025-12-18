@@ -71,7 +71,7 @@ fun MemberSelector(
                                     )
                                 }
                             }
-                            HorizontalDivider()
+                            Divider()
                         }
                     }
                 }

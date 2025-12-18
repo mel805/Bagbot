@@ -67,7 +67,7 @@ fun ChannelSelector(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
-                            HorizontalDivider()
+                            Divider()
                         }
                     }
                 }
