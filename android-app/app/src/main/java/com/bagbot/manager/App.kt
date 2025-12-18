@@ -111,6 +111,16 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     var userId by remember { mutableStateOf("") }
     var isFounder by remember { mutableStateOf(false) }
     
+    // Créer userInfo JsonObject pour StaffChat
+    val userInfo = remember(userId, userName) {
+        if (userId.isNotEmpty()) {
+            buildJsonObject {
+                put("id", userId)
+                put("username", userName)
+            }
+        } else null
+    }
+    
     // États données serveur
     var members by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var memberRoles by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
