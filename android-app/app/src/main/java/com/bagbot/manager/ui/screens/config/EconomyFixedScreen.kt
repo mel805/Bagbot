@@ -408,7 +408,8 @@ fun EconomyKarma(economyData: JsonObject?, members: Map<String, String>) {
                 }
             }
         } else {
-            items(usersWithKarma) { (userId, charme, perv) ->
+            items(usersWithKarma.size) { index ->
+                val (userId, charme, perv) = usersWithKarma[index]
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
@@ -446,6 +447,7 @@ fun EconomyKarma(economyData: JsonObject?, members: Map<String, String>) {
                     }
                 }
             }
+        }
         }
     }
 }

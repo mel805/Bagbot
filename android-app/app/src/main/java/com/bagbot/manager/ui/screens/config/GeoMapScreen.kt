@@ -194,7 +194,7 @@ fun GeoMapTab(geoData: JsonObject?, members: Map<String, String>) {
                     Icon(Icons.Default.Map, null, modifier = Modifier.size(64.dp), tint = Color.Gray)
                     Spacer(Modifier.height(16.dp))
                     Text("Aucune localisation à afficher", color = Color.Gray)
-                </Column>
+                }
             }
         } else {
             // Bouton pour ouvrir Google Maps avec tous les points
@@ -238,8 +238,8 @@ fun GeoMapTab(geoData: JsonObject?, members: Map<String, String>) {
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                locations.forEach { (userId, location) ->
-                    item {
+                items(locations.size) {
+                    val (userId, location) = locations.entries.toList()[it]
                         val loc = location.jsonObject
                         val city = loc["city"]?.jsonPrimitive?.contentOrNull ?: "Inconnue"
                         val lat = loc["lat"]?.jsonPrimitive?.doubleOrNull ?: 0.0
