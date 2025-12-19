@@ -1720,6 +1720,8 @@ fun AppConfigScreen(
             }
         }
     }
+}
+
 @Composable
 fun ConfigGroupsScreen(
     configData: JsonObject?,
@@ -2721,6 +2723,4 @@ fun ConfigEditorScreen(
             }
         }
     }
-}
-
 }
