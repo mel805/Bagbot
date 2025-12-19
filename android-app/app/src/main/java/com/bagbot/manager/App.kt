@@ -37,6 +37,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import com.bagbot.manager.ui.theme.BagBotTheme
 import com.bagbot.manager.ui.screens.SplashScreen
+import com.bagbot.manager.ui.screens.ConfigDashboardScreen
 import com.bagbot.manager.ui.components.MemberSelector
 import com.bagbot.manager.ui.components.ChannelSelector
 import com.bagbot.manager.ui.components.RoleSelector
@@ -1062,7 +1063,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                             )
                         }
                         tab == 2 -> {
-                            ConfigGroupsScreen(
+                            ConfigDashboardScreen(
                                 configData = configData,
                                 members = members,
                                 channels = channels,
@@ -1421,7 +1422,7 @@ fun AppConfigScreen(
                     )
                     Spacer(Modifier.height(16.dp))
                     Text("URL Dashboard: $baseUrl", color = Color.White)
-                    Text("Version: 2.1.2", color = Color.Gray)
+                    Text("Version: 3.0.3", color = Color.Gray)
                     Text(
                         "Statut: ${if (token.isNullOrBlank()) "Non connecté" else "Connecté"}",
                         color = if (token.isNullOrBlank()) Color(0xFFE53935) else Color(0xFF4CAF50)
