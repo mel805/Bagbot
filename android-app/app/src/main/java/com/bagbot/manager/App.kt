@@ -52,6 +52,12 @@ import com.bagbot.manager.ui.screens.AutoThreadConfigScreen
 import com.bagbot.manager.ui.screens.config.DisboardConfigScreen
 import com.bagbot.manager.ui.screens.config.CountingConfigScreen
 import com.bagbot.manager.ui.screens.config.TruthDareConfigScreen
+import com.bagbot.manager.ui.screens.config.BoostConfigScreen
+import com.bagbot.manager.ui.screens.config.GeoFullScreen
+import com.bagbot.manager.ui.screens.config.EconomyFullScreen
+import com.bagbot.manager.ui.screens.config.LevelsFullScreen
+import com.bagbot.manager.ui.screens.config.ActionsGifsScreen
+import com.bagbot.manager.ui.screens.NewConfigHomeScreen
 
 private const val TAG = "BAG_APP"
 
@@ -1074,37 +1080,9 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                             )
                         }
                         tab == 2 -> {
-                            ConfigGroupsScreen(
-                                configData = configData,
-                                members = members,
-                                channels = channels,
-                                roles = roles,
-                                api = api,
-                                json = json,
-                                scope = scope,
-                                snackbar = snackbar,
-                                isLoading = isLoading,
-                                onReloadConfig = {
-                                    scope.launch {
-                                        isLoading = true
-                                        withContext(Dispatchers.IO) {
-                                            try {
-                                                val configJson = api.getJson("/api/configs")
-                                                withContext(Dispatchers.Main) {
-                                                    configData = json.parseToJsonElement(configJson).jsonObject
-                                                    snackbar.showSnackbar("✅ Configuration rechargée")
-                                                }
-                                            } catch (e: Exception) {
-                                                withContext(Dispatchers.Main) {
-                                                    snackbar.showSnackbar("❌ Erreur: ${e.message}")
-                                                }
-                                            } finally {
-                                                withContext(Dispatchers.Main) {
-                                                    isLoading = false
-                                                }
-                                            }
-                                        }
-                                    }
+                            NewConfigHomeScreen(
+                                onCategoryClick = { categoryId ->
+                                    selectedConfigSection = categoryId
                                 }
                             )
                         }
@@ -2580,6 +2558,61 @@ fun ConfigEditorScreen(
             com.bagbot.manager.ui.screens.config.TruthDareConfigScreen(
                 api = api,
                 channels = channels,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+        "staff" -> {
+            com.bagbot.manager.ui.screens.StaffConfigScreen(
+                api = api,
+                roles = roles,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+        "economy" -> {
+            EconomyFullScreen(
+                api = api,
+                json = json,
+                scope = scope,
+                snackbar = snackbar,
+                members = members
+            )
+            return
+        }
+        "levels" -> {
+            LevelsFullScreen(
+                api = api,
+                json = json,
+                scope = scope,
+                snackbar = snackbar,
+                members = members
+            )
+            return
+        }
+        "boost" -> {
+            BoostConfigScreen(
+                api = api,
+                roles = roles,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+        "geo" -> {
+            GeoFullScreen(
+                api = api,
+                json = json,
+                members = members,
+                onBack = onBack
+            )
+            return
+        }
+        "actions" -> {
+            ActionsGifsScreen(
+                api = api,
                 json = json,
                 onBack = onBack
             )
