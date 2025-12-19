@@ -232,7 +232,7 @@ app.post('/bot/control', (req, res) => {
 
 
 // Bot status info
-app.get('/api/bot/status', (req, res) => {
+app.get('/api/bot/status', async (req, res) => {
   try {
     const { exec } = require('child_process');
     const fs = require('fs');
@@ -248,11 +248,65 @@ app.get('/api/bot/status', (req, res) => {
       console.error('Error counting commands:', err);
     }
     
+    // Récupérer les informations du serveur Discord
+    let guildInfo = {
+      name: 'Boy and Girls (BAG)',
+      memberCount: 0,
+      channelCount: 0,
+      roleCount: 0,
+      icon: null,
+      createdAt: null
+    };
+    
+    try {
+      // Récupérer les informations du serveur via l'API Discord
+      const guildResponse = await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'discord.com',
+          path: `/api/v10/guilds/${GUILD}`,
+          method: 'GET',
+          headers: {
+            'Authorization': `Bot ${DISCORD_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        };
+        
+        const req = https.request(options, (res) => {
+          let data = '';
+          res.on('data', (chunk) => data += chunk);
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else {
+              reject(new Error(`Discord API error: ${res.statusCode}`));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.end();
+      });
+      
+      guildInfo.name = guildResponse.name || guildInfo.name;
+      guildInfo.memberCount = guildResponse.approximate_member_count || guildResponse.member_count || 0;
+      guildInfo.icon = guildResponse.icon ? `https://cdn.discordapp.com/icons/${GUILD}/${guildResponse.icon}.png` : null;
+      guildInfo.createdAt = guildResponse.id ? new Date(parseInt(guildResponse.id) / 4194304 + 1420070400000).toISOString() : null;
+      
+      // Compter les salons et rôles
+      const channels = await getChannels();
+      const roles = await getRoles();
+      guildInfo.channelCount = Object.keys(channels).length;
+      guildInfo.roleCount = Object.keys(roles).length;
+    } catch (err) {
+      console.error('Error fetching guild info:', err);
+    }
+    
     // Obtenir le statut PM2
     exec('pm2 jlist', (error, stdout, stderr) => {
       let botStatus = 'unknown';
       let restarts = 0;
       let uptime = 0;
+      let memory = 0;
+      let cpu = 0;
       
       if (!error && stdout) {
         try {
@@ -262,6 +316,8 @@ app.get('/api/bot/status', (req, res) => {
             botStatus = bagbot.pm2_env.status;
             restarts = bagbot.pm2_env.restart_time || 0;
             uptime = bagbot.pm2_env.pm_uptime || 0;
+            memory = bagbot.monit?.memory || 0;
+            cpu = bagbot.monit?.cpu || 0;
           }
         } catch (err) {
           console.error('Error parsing PM2 data:', err);
@@ -278,17 +334,137 @@ app.get('/api/bot/status', (req, res) => {
         console.error('Error reading package.json:', err);
       }
       
+      // Lire les statistiques de la configuration
+      let economyStats = { users: 0, totalMoney: 0 };
+      let levelsStats = { users: 0, maxLevel: 0 };
+      try {
+        const config = readConfig();
+        const guildConfig = config.guilds[GUILD] || {};
+        
+        // Stats économie
+        if (guildConfig.economy && guildConfig.economy.balances) {
+          const balances = guildConfig.economy.balances;
+          economyStats.users = Object.keys(balances).length;
+          economyStats.totalMoney = Object.values(balances).reduce((sum, user) => sum + (user.amount || 0), 0);
+        }
+        
+        // Stats niveaux
+        if (guildConfig.levels && guildConfig.levels.users) {
+          const users = guildConfig.levels.users;
+          economyStats.users = Object.keys(users).length;
+          levelsStats.maxLevel = Math.max(0, ...Object.values(users).map(u => u.level || 0));
+        }
+      } catch (err) {
+        console.error('Error reading config stats:', err);
+      }
+      
       res.json({
         status: botStatus,
         commandCount,
         restarts,
         uptime,
+        memory,
+        cpu,
         version,
-        dashboardVersion: 'v2.8'
+        dashboardVersion: 'v2.8',
+        guild: guildInfo,
+        stats: {
+          economy: economyStats,
+          levels: levelsStats
+        }
       });
     });
   } catch (err) {
     console.error('Error getting bot status:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Dashboard info API
+app.get('/api/dashboard/info', (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    
+    // Informations sur le dashboard
+    const dashboardInfo = {
+      version: 'v2.8',
+      port: PORT,
+      uptime: process.uptime(),
+      nodeVersion: process.version,
+      platform: os.platform(),
+      hostname: os.hostname()
+    };
+    
+    // Statistiques sur les fichiers
+    const statsInfo = {
+      backups: 0,
+      uploads: 0,
+      configSize: 0
+    };
+    
+    try {
+      // Compter les backups
+      if (fs.existsSync(BACKUP_DIR)) {
+        const files = fs.readdirSync(BACKUP_DIR);
+        statsInfo.backups = files.filter(f => f.endsWith('.json') && !f.startsWith('pre-restore-')).length;
+      }
+      
+      // Compter les uploads
+      const uploadsPath = path.join(__dirname, '../data/uploads');
+      if (fs.existsSync(uploadsPath)) {
+        const files = fs.readdirSync(uploadsPath);
+        statsInfo.uploads = files.length;
+      }
+      
+      // Taille du fichier de config
+      if (fs.existsSync(CONFIG)) {
+        const stats = fs.statSync(CONFIG);
+        statsInfo.configSize = stats.size;
+      }
+    } catch (err) {
+      console.error('Error collecting dashboard stats:', err);
+    }
+    
+    // Lire les fonctionnalités activées depuis la config
+    const features = {
+      economy: false,
+      levels: false,
+      truthdare: false,
+      tickets: false,
+      confess: false,
+      autokick: false,
+      counting: false,
+      geo: false,
+      music: false
+    };
+    
+    try {
+      const config = readConfig();
+      const guildConfig = config.guilds[GUILD] || {};
+      
+      features.economy = !!(guildConfig.economy && guildConfig.economy.enabled);
+      features.levels = !!(guildConfig.levels && guildConfig.levels.enabled);
+      features.truthdare = !!(guildConfig.truthdare);
+      features.tickets = !!(guildConfig.tickets && guildConfig.tickets.enabled);
+      features.confess = !!(guildConfig.confess && guildConfig.confess.enabled);
+      features.autokick = !!(guildConfig.autokick && guildConfig.autokick.enabled);
+      features.counting = !!(guildConfig.counting && guildConfig.counting.enabled);
+      features.geo = !!(guildConfig.geo);
+      // La musique est toujours disponible
+      features.music = true;
+    } catch (err) {
+      console.error('Error reading config features:', err);
+    }
+    
+    res.json({
+      dashboard: dashboardInfo,
+      stats: statsInfo,
+      features: features
+    });
+  } catch (err) {
+    console.error('Error getting dashboard info:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

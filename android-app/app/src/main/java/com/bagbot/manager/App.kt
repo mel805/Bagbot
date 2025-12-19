@@ -748,6 +748,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     var roles by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var botOnline by remember { mutableStateOf(false) }
     var botStats by remember { mutableStateOf<JsonObject?>(null) }
+    var dashboardInfo by remember { mutableStateOf<JsonObject?>(null) }
     var configData by remember { mutableStateOf<JsonObject?>(null) }
     
     // États UI
@@ -888,6 +889,20 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     withContext(Dispatchers.Main) {
                         errorMessage = "Erreur configuration: ${e.message}"
                     }
+                }
+                
+                // 7. Informations du dashboard
+                loadingMessage = "Chargement des infos du dashboard..."
+                Log.d(TAG, "Fetching /api/dashboard/info")
+                try {
+                    val dashboardJson = api.getJson("/api/dashboard/info")
+                    Log.d(TAG, "Response /api/dashboard/info: ${dashboardJson.take(200)}")
+                    withContext(Dispatchers.Main) {
+                        dashboardInfo = json.parseToJsonElement(dashboardJson).jsonObject
+                    }
+                    Log.d(TAG, "Dashboard info loaded")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error /api/dashboard/info: ${e.message}")
                 }
                 
                 Log.d(TAG, "✅ All data loaded successfully")
@@ -1031,6 +1046,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 loadingMessage = loadingMessage,
                                 botOnline = botOnline,
                                 botStats = botStats,
+                                dashboardInfo = dashboardInfo,
                                 members = members,
                                 channels = channels,
                                 roles = roles,
@@ -1190,6 +1206,7 @@ fun HomeScreen(
     loadingMessage: String,
     botOnline: Boolean,
     botStats: JsonObject?,
+    dashboardInfo: JsonObject?,
     members: Map<String, String>,
     channels: Map<String, String>,
     roles: Map<String, String>,
@@ -1286,7 +1303,151 @@ fun HomeScreen(
                                 Text("⚡ $it commandes disponibles", color = Color.White)
                             }
                             stats["version"]?.jsonPrimitive?.contentOrNull?.let {
-                                Text("📦 Version: $it", color = Color.Gray)
+                                Text("📦 Version Bot: $it", color = Color.Gray)
+                            }
+                            stats["restarts"]?.jsonPrimitive?.intOrNull?.let {
+                                Text("🔄 Redémarrages: $it", color = Color.Gray)
+                            }
+                            stats["uptime"]?.jsonPrimitive?.longOrNull?.let { uptime ->
+                                val uptimeHours = uptime / (1000 * 60 * 60)
+                                Text("⏱️ Uptime: ${uptimeHours}h", color = Color.Gray)
+                            }
+                            
+                            // Informations détaillées du serveur Discord
+                            stats["guild"]?.jsonObject?.let { guild ->
+                                Spacer(Modifier.height(12.dp))
+                                Divider(color = Color(0xFF2E2E2E))
+                                Spacer(Modifier.height(12.dp))
+                                
+                                guild["name"]?.jsonPrimitive?.contentOrNull?.let { name ->
+                                    Text("🏰 Serveur: $name", color = Color.White, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                Row(
+                                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    guild["memberCount"]?.jsonPrimitive?.intOrNull?.let { count ->
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$count", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFF1744), fontWeight = FontWeight.Bold)
+                                            Text("Membres", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                    guild["channelCount"]?.jsonPrimitive?.intOrNull?.let { count ->
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$count", style = MaterialTheme.typography.titleMedium, color = Color(0xFF9C27B0), fontWeight = FontWeight.Bold)
+                                            Text("Salons", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                    guild["roleCount"]?.jsonPrimitive?.intOrNull?.let { count ->
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                            Text("$count", style = MaterialTheme.typography.titleMedium, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                                            Text("Rôles", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Statistiques économie et niveaux
+                            stats["stats"]?.jsonObject?.let { statsObj ->
+                                statsObj["economy"]?.jsonObject?.let { economy ->
+                                    val users = economy["users"]?.jsonPrimitive?.intOrNull ?: 0
+                                    val totalMoney = economy["totalMoney"]?.jsonPrimitive?.intOrNull ?: 0
+                                    if (users > 0) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Text("💰 Économie: $users utilisateurs, ${totalMoney}💎 total", color = Color(0xFF4CAF50))
+                                    }
+                                }
+                                statsObj["levels"]?.jsonObject?.let { levels ->
+                                    val maxLevel = levels["maxLevel"]?.jsonPrimitive?.intOrNull ?: 0
+                                    if (maxLevel > 0) {
+                                        Text("📊 Niveau max: $maxLevel", color = Color(0xFF2196F3))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Carte Dashboard Info
+            dashboardInfo?.let { dashboard ->
+                item {
+                    Card(
+                        Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                    ) {
+                        Column(Modifier.padding(20.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Dashboard,
+                                    null,
+                                    tint = Color(0xFF2196F3),
+                                    modifier = Modifier.size(32.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    "Dashboard",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                            
+                            Spacer(Modifier.height(16.dp))
+                            Divider(color = Color(0xFF2E2E2E))
+                            Spacer(Modifier.height(16.dp))
+                            
+                            dashboard["dashboard"]?.jsonObject?.let { info ->
+                                info["version"]?.jsonPrimitive?.contentOrNull?.let {
+                                    Text("🌐 Version Dashboard: $it", color = Color.White)
+                                }
+                                info["uptime"]?.jsonPrimitive?.doubleOrNull?.let { uptime ->
+                                    val uptimeHours = (uptime / 3600).toInt()
+                                    Text("⏱️ Uptime: ${uptimeHours}h", color = Color.Gray)
+                                }
+                                info["port"]?.jsonPrimitive?.intOrNull?.let {
+                                    Text("🔌 Port: $it", color = Color.Gray)
+                                }
+                            }
+                            
+                            dashboard["stats"]?.jsonObject?.let { stats ->
+                                Spacer(Modifier.height(12.dp))
+                                stats["backups"]?.jsonPrimitive?.intOrNull?.let {
+                                    Text("💾 Sauvegardes: $it", color = Color(0xFF4CAF50))
+                                }
+                                stats["uploads"]?.jsonPrimitive?.intOrNull?.let {
+                                    Text("📁 Fichiers uploadés: $it", color = Color(0xFF9C27B0))
+                                }
+                                stats["configSize"]?.jsonPrimitive?.longOrNull?.let { size ->
+                                    val sizeKB = (size / 1024).toInt()
+                                    Text("📋 Taille config: ${sizeKB}KB", color = Color.Gray)
+                                }
+                            }
+                            
+                            dashboard["features"]?.jsonObject?.let { features ->
+                                Spacer(Modifier.height(12.dp))
+                                Divider(color = Color(0xFF2E2E2E))
+                                Spacer(Modifier.height(12.dp))
+                                Text("✨ Fonctionnalités actives:", fontWeight = FontWeight.Bold, color = Color(0xFFFF1744))
+                                Spacer(Modifier.height(8.dp))
+                                
+                                val activeFeatures = mutableListOf<String>()
+                                if (features["economy"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("💰 Économie")
+                                if (features["levels"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("📊 Niveaux")
+                                if (features["truthdare"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🎲 Action/Vérité")
+                                if (features["tickets"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🎫 Tickets")
+                                if (features["confess"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("💬 Confessions")
+                                if (features["autokick"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🚪 Auto-kick")
+                                if (features["counting"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🔢 Comptage")
+                                if (features["geo"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🌍 Géolocalisation")
+                                if (features["music"]?.jsonPrimitive?.booleanOrNull == true) activeFeatures.add("🎵 Musique")
+                                
+                                if (activeFeatures.isNotEmpty()) {
+                                    Text(activeFeatures.joinToString(" • "), color = Color.LightGray, style = MaterialTheme.typography.bodyMedium)
+                                } else {
+                                    Text("Aucune fonctionnalité activée", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                }
                             }
                         }
                     }
