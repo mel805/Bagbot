@@ -1703,71 +1703,275 @@ private fun ActionsConfigTab(
 ) {
     val eco = configData?.obj("economy")
     val actions = eco?.obj("actions")
-
-    val initialGifs = actions?.get("gifs")
-    val initialMessages = actions?.get("messages")
-    val initialConfig = actions?.get("config")
-
-    val prettyJson = remember { Json { prettyPrint = true } }
-    fun pretty(el: JsonElement?): String = try {
-        if (el == null) "{}" else prettyJson.encodeToString(JsonElement.serializer(), el)
-    } catch (_: Exception) {
-        el?.toString() ?: "{}"
+    
+    val actionsList = remember(actions) {
+        actions?.obj("list")?.mapValues { (key, value) ->
+            val obj = value.jsonObject
+            key to (obj["label"]?.jsonPrimitive?.contentOrNull ?: key)
+        }?.values?.toList() ?: emptyList()
     }
-
-    var gifsText by remember { mutableStateOf(pretty(initialGifs)) }
-    var messagesText by remember { mutableStateOf(pretty(initialMessages)) }
-    var configText by remember { mutableStateOf(pretty(initialConfig)) }
-    var isSaving by remember { mutableStateOf(false) }
-
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            SectionCard(
-                title = "🎬 Actions",
-                subtitle = "Édition JSON (gifs/messages/config) comme le dashboard web"
-            ) {
+    
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedActionKey by remember { mutableStateOf(actionsList.firstOrNull()?.first ?: "") }
+    
+    Column(Modifier.fillMaxSize()) {
+        // Header
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
                 Text(
-                    "Astuce: colle le JSON complet (objet/array).",
-                    color = Color.Gray,
-                    style = MaterialTheme.typography.bodySmall
+                    "🎭 Actions Économiques",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Text(
+                    "${actionsList.size} actions disponibles",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
                 )
             }
         }
+        
+        // Tabs
+        TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF1E1E1E)) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("🎬 GIFs") }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("💬 Messages") }
+            )
+        }
+        
+        when (selectedTab) {
+            0 -> ActionGifsTab(actions, actionsList, selectedActionKey, { selectedActionKey = it }, api, json, scope, snackbar)
+            1 -> ActionMessagesTab(actions, actionsList, selectedActionKey, { selectedActionKey = it }, api, json, scope, snackbar)
+        }
+    }
+}
 
+@Composable
+private fun ActionGifsTab(
+    actions: JsonObject?,
+    actionsList: List<Pair<String, String>>,
+    selectedActionKey: String,
+    onActionSelect: (String) -> Unit,
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState
+) {
+    val gifsData = actions?.obj("gifs")?.obj(selectedActionKey)
+    val successGifs = remember(gifsData) {
+        gifsData?.arr("success")?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toMutableList() ?: mutableListOf()
+    }
+    val failGifs = remember(gifsData) {
+        gifsData?.arr("fail")?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toMutableList() ?: mutableListOf()
+    }
+    
+    var showAddSuccess by remember { mutableStateOf(false) }
+    var showAddFail by remember { mutableStateOf(false) }
+    var newGifUrl by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+    
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Action selector
         item {
-            SectionCard(title = "GIFs (economy.actions.gifs)") {
-                OutlinedTextField(
-                    value = gifsText,
-                    onValueChange = { gifsText = it },
-                    label = { Text("JSON") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 6
-                )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Sélectionner une action", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = false,
+                        onDismissRequest = {}
+                    ) {}
+                    
+                    // Custom dropdown
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { expanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val selected = actionsList.find { it.first == selectedActionKey }
+                            Text(selected?.second ?: "Sélectionner...", modifier = Modifier.weight(1f))
+                            Icon(if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown, null)
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            actionsList.forEach { (key, label) ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        onActionSelect(key)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+        
+        // Success GIFs
         item {
-            SectionCard(title = "Messages (economy.actions.messages)") {
-                OutlinedTextField(
-                    value = messagesText,
-                    onValueChange = { messagesText = it },
-                    label = { Text("JSON") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 6
-                )
+            SectionCard(title = "✅ GIFs Succès (${successGifs.size})") {
+                successGifs.forEachIndexed { index, url ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            url.take(50) + if (url.length > 50) "..." else "",
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        IconButton(onClick = { successGifs.removeAt(index) }) {
+                            Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                        }
+                    }
+                }
+                
+                if (showAddSuccess) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newGifUrl,
+                        onValueChange = { newGifUrl = it },
+                        label = { Text("URL du GIF") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                showAddSuccess = false
+                                newGifUrl = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Annuler")
+                        }
+                        Button(
+                            onClick = {
+                                if (newGifUrl.isNotBlank()) {
+                                    successGifs.add(newGifUrl)
+                                    newGifUrl = ""
+                                    showAddSuccess = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = newGifUrl.isNotBlank()
+                        ) {
+                            Text("Ajouter")
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showAddSuccess = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ajouter un GIF succès")
+                    }
+                }
             }
         }
+        
+        // Fail GIFs
         item {
-            SectionCard(title = "Config (economy.actions.config)") {
-                OutlinedTextField(
-                    value = configText,
-                    onValueChange = { configText = it },
-                    label = { Text("JSON") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 6
-                )
+            SectionCard(title = "❌ GIFs Échec (${failGifs.size})") {
+                failGifs.forEachIndexed { index, url ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            url.take(50) + if (url.length > 50) "..." else "",
+                            modifier = Modifier.weight(1f),
+                            color = Color.White,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        IconButton(onClick = { failGifs.removeAt(index) }) {
+                            Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                        }
+                    }
+                }
+                
+                if (showAddFail) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newGifUrl,
+                        onValueChange = { newGifUrl = it },
+                        label = { Text("URL du GIF") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                showAddFail = false
+                                newGifUrl = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Annuler")
+                        }
+                        Button(
+                            onClick = {
+                                if (newGifUrl.isNotBlank()) {
+                                    failGifs.add(newGifUrl)
+                                    newGifUrl = ""
+                                    showAddFail = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = newGifUrl.isNotBlank()
+                        ) {
+                            Text("Ajouter")
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showAddFail = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ajouter un GIF échec")
+                    }
+                }
             }
         }
-
+        
+        // Save button
         item {
             Button(
                 onClick = {
@@ -1775,18 +1979,17 @@ private fun ActionsConfigTab(
                         isSaving = true
                         withContext(Dispatchers.IO) {
                             try {
-                                val gifsEl = json.parseToJsonElement(gifsText)
-                                val messagesEl = json.parseToJsonElement(messagesText)
-                                val cfgEl = json.parseToJsonElement(configText)
+                                // Build the updated gifs structure
                                 val body = buildJsonObject {
-                                    put("gifs", gifsEl)
-                                    put("messages", messagesEl)
-                                    put("config", cfgEl)
+                                    put(selectedActionKey, buildJsonObject {
+                                        put("success", JsonArray(successGifs.map { JsonPrimitive(it) }))
+                                        put("fail", JsonArray(failGifs.map { JsonPrimitive(it) }))
+                                    })
                                 }
-                                api.postJson("/api/actions", json.encodeToString(JsonObject.serializer(), body))
-                                withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Actions sauvegardées") }
+                                api.postJson("/api/actions/gifs", json.encodeToString(JsonObject.serializer(), body))
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ GIFs sauvegardés") }
                             } catch (e: Exception) {
-                                withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur JSON/API: ${e.message}") }
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
                             } finally {
                                 withContext(Dispatchers.Main) { isSaving = false }
                             }
@@ -1800,7 +2003,98 @@ private fun ActionsConfigTab(
                 else {
                     Icon(Icons.Default.Save, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Sauvegarder Actions")
+                    Text("Sauvegarder les GIFs")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActionMessagesTab(
+    actions: JsonObject?,
+    actionsList: List<Pair<String, String>>,
+    selectedActionKey: String,
+    onActionSelect: (String) -> Unit,
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Sélectionner une action", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { expanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val selected = actionsList.find { it.first == selectedActionKey }
+                            Text(selected?.second ?: "Sélectionner...", modifier = Modifier.weight(1f))
+                            Icon(if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown, null)
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            actionsList.forEach { (key, label) ->
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        onActionSelect(key)
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            Icons.Default.Chat,
+                            contentDescription = null,
+                            tint = Color.Gray.copy(alpha = 0.5f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Gestion des messages disponible sur le dashboard web",
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "http://88.174.155.230:33002",
+                            color = Color(0xFF5865F2),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         }
@@ -3210,7 +3504,8 @@ private fun WelcomeConfigTab(
             withContext(Dispatchers.IO) {
                 try {
                     val resp = api.getJson("/api/welcome")
-                    val obj = json.parseToJsonElement(resp).jsonObject
+                    val data = json.parseToJsonElement(resp).jsonObject
+                    val obj = data["welcome"]?.jsonObject ?: data // Support both formats
                     withContext(Dispatchers.Main) {
                         enabled = obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
                         channelId = obj["channelId"]?.jsonPrimitive?.contentOrNull
@@ -4195,34 +4490,63 @@ private fun GeoConfigTab(
                         }
                     }
                 } else {
-                    androidx.compose.ui.viewinterop.AndroidView(
-                        factory = { context ->
-                            org.osmdroid.views.MapView(context).apply {
-                                setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
-                                setMultiTouchControls(true)
-                                controller.setZoom(6.0)
-                                
-                                // Calculate center of all locations
-                                val avgLat = locations.map { it.lat }.average()
-                                val avgLon = locations.map { it.lon }.average()
-                                controller.setCenter(org.osmdroid.util.GeoPoint(avgLat, avgLon))
-                                
-                                // Add markers for each location
-                                locations.forEach { location ->
-                                    val marker = org.osmdroid.views.overlay.Marker(this).apply {
-                                        position = org.osmdroid.util.GeoPoint(location.lat, location.lon)
-                                        title = members[location.userId] ?: "Membre inconnu"
-                                        snippet = location.city.ifBlank { "Ville inconnue" }
-                                        setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
-                                    }
-                                    overlays.add(marker)
-                                }
-                            }
-                        },
+                    Card(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(16.dp)
-                    )
+                            .padding(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                    ) {
+                        androidx.compose.ui.viewinterop.AndroidView(
+                            factory = { context ->
+                                // Configure OSMDroid
+                                org.osmdroid.config.Configuration.getInstance().apply {
+                                    userAgentValue = context.packageName
+                                }
+                                
+                                org.osmdroid.views.MapView(context).apply {
+                                    // Configure tile source
+                                    setTileSource(org.osmdroid.tileprovider.tilesource.TileSourceFactory.MAPNIK)
+                                    
+                                    // Enable multi-touch
+                                    setMultiTouchControls(true)
+                                    
+                                    // Enable built-in zoom controls
+                                    setBuiltInZoomControls(true)
+                                    
+                                    // Set zoom level
+                                    controller.setZoom(5.5)
+                                    minZoomLevel = 3.0
+                                    maxZoomLevel = 18.0
+                                    
+                                    // Calculate center of all locations
+                                    val avgLat = locations.map { it.lat }.average()
+                                    val avgLon = locations.map { it.lon }.average()
+                                    controller.setCenter(org.osmdroid.util.GeoPoint(avgLat, avgLon))
+                                    
+                                    // Add markers for each location
+                                    locations.forEach { location ->
+                                        val marker = org.osmdroid.views.overlay.Marker(this).apply {
+                                            position = org.osmdroid.util.GeoPoint(location.lat, location.lon)
+                                            title = members[location.userId] ?: "Membre inconnu"
+                                            snippet = "${location.city.ifBlank { "Ville inconnue" }}\nLat: ${location.lat}, Lon: ${location.lon}"
+                                            setAnchor(org.osmdroid.views.overlay.Marker.ANCHOR_CENTER, org.osmdroid.views.overlay.Marker.ANCHOR_BOTTOM)
+                                            
+                                            // Info window that shows on tap
+                                            setOnMarkerClickListener { marker, mapView ->
+                                                marker.showInfoWindow()
+                                                true
+                                            }
+                                        }
+                                        overlays.add(marker)
+                                    }
+                                    
+                                    // Refresh map
+                                    invalidate()
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
             }
         }
