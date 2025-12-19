@@ -1610,7 +1610,6 @@ fun ConfigGroupsScreen(
 // ============================================
 
 @Composable
-@Composable
 fun renderKeyInfo(
     sectionKey: String,
     sectionData: JsonElement,
@@ -2086,11 +2085,7 @@ fun ConfigGroupDetailScreen(
                                 
                                 // Affichage spécial pour la géolocalisation
                                 if (sectionKey == "geo") {
-                                    try {
-                                        GeoMapViewer(sectionData.jsonObject, members)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error displaying geo map: ${e.message}")
-                                    }
+                                    GeoMapViewer(sectionData.jsonObject, members)
                                 }
                                 
                                 Spacer(Modifier.height(8.dp))
