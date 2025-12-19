@@ -1,4 +1,4 @@
-# Changelog v2.5 - Synchronisation complète avec le Dashboard
+# Changelog v2.4.1 - Synchronisation complète avec le Dashboard
 
 ## 🎯 Objectif
 Ajouter toutes les catégories de configuration manquantes pour avoir exactement les mêmes catégories que dans le dashboard web.
@@ -178,9 +178,9 @@ Toutes les nouvelles catégories utilisent l'API existante:
 
 ## 🚀 Version
 
-**Version**: 2.5
+**Version**: 2.4.1
 **Date**: 19 Décembre 2025
-**Tag Git**: v2.5
+**Tag Git**: v2.4.1
 
 ## 📝 Notes pour le développement futur
 

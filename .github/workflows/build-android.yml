@@ -54,21 +54,39 @@ jobs:
       with:
         files: release/BagBot-Manager-${{ github.ref_name }}.apk
         body: |
-          ## 🎉 BAG Bot Manager ${{ github.ref_name }}
+          ## 🎉 BAG Bot Manager ${{ github.ref_name }} - Synchronisation complète avec le Dashboard
           
-          ### ✨ Nouvelles fonctionnalités
-          - 🎨 Nouveau design violet/rose
-          - 🚀 Écran de chargement animé
-          - 🔐 Interface d'administration
-          - 👥 Sélecteur de membres
-          - 📱 Navigation Material 3
-          - 🔒 Gestion des accès
+          ### ✨ Nouvelles catégories de configuration (9 ajoutées !)
+          
+          #### Modération & Sécurité
+          - 📝 **Logs** - Configuration complète par catégorie avec sélecteurs de channels
+          - 👥 **Rôles Staff** - Gestion des rôles avec interface moderne
+          - 👢 **AutoKick** - Kick automatique avec suivi des membres
+          - ⏰ **Kick Inactivité** - Gestion de l'inactivité avec rôles exempts
+          
+          #### Fonctionnalités
+          - 💬 **Confessions** - Mode SFW/NSFW avec prompts personnalisés
+          - 🧵 **AutoThread** - Création automatique de threads avec modes de nommage
+          - 📢 **Disboard** - Rappels automatiques pour le bump
+          - 🔢 **Comptage** - Gestion des channels de comptage
+          - 🎲 **Action ou Vérité** - Configuration complète SFW/NSFW
+          
+          ### 🎨 Améliorations de l'interface
+          - ✅ **Vrais sélecteurs** de rôles, channels et membres (plus de JSON !)
+          - ✅ **Messages configurables** avec variables ({user}, {guild}, etc.)
+          - ✅ **Embeds personnalisables** (titre, description, couleur, footer)
+          - ✅ **Onglets SFW/NSFW** pour les catégories appropriées
+          - ✅ **Listes dynamiques** avec ajout/suppression intuitive
+          - ✅ **Compteurs et statistiques** en temps réel
+          
+          ### 📊 Résultat
+          L'application Android a maintenant **exactement les mêmes catégories** que le dashboard web !
           
           ### 📥 Installation
-          1. Téléchargez l'APK
-          2. Activez "Sources inconnues"
-          3. Installez et profitez !
+          1. Téléchargez l'APK ci-dessous
+          2. Activez "Sources inconnues" dans les paramètres
+          3. Installez et profitez de toutes les fonctionnalités !
           
-          ### 🔗 URL: http://88.174.155.230:33002
+          ### 🔗 Serveur: http://88.174.155.230:33002
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
