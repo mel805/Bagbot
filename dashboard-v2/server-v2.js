@@ -1750,6 +1750,150 @@ app.delete('/api/truthdare/:mode/channels/:channelId', (req, res) => {
   }
 });
 
+// ============ NEW A/V API Routes for Android App v2.5.2 ============
+
+// Get all prompts with unified structure
+app.get('/api/truthdare/prompts/all', (req, res) => {
+  try {
+    const config = readConfig();
+    const guildConfig = config.guilds[GUILD] || {};
+    const tdData = guildConfig.truthdare || { sfw: { prompts: [], channels: [] }, nsfw: { prompts: [], channels: [] } };
+    
+    // Convert to unified structure with category and type
+    const allPrompts = [];
+    ['sfw', 'nsfw'].forEach(category => {
+      if (tdData[category] && tdData[category].prompts) {
+        tdData[category].prompts.forEach(prompt => {
+          allPrompts.push({
+            id: `${category}-${prompt.id || Math.random()}`,
+            text: prompt.text,
+            category: category,
+            type: prompt.type || 'truth'
+          });
+        });
+      }
+    });
+    
+    res.json({ prompts: allPrompts });
+  } catch (err) {
+    console.error('Error in GET /api/truthdare/prompts/all:', err);
+    res.status(500).json({ error: 'Failed to fetch prompts' });
+  }
+});
+
+// Add a new prompt (unified structure)
+app.post('/api/truthdare/prompt', (req, res) => {
+  try {
+    const { text, category, type } = req.body;
+    if (!['sfw', 'nsfw'].includes(category)) {
+      return res.status(400).json({ error: 'Category must be sfw or nsfw' });
+    }
+    if (!['truth', 'dare'].includes(type)) {
+      return res.status(400).json({ error: 'Type must be truth or dare' });
+    }
+    if (!text) {
+      return res.status(400).json({ error: 'Text is required' });
+    }
+    
+    const config = readConfig();
+    const guildConfig = config.guilds[GUILD] || {};
+    if (!guildConfig.truthdare) {
+      guildConfig.truthdare = { sfw: { prompts: [], channels: [] }, nsfw: { prompts: [], channels: [] } };
+    }
+    if (!guildConfig.truthdare[category]) {
+      guildConfig.truthdare[category] = { prompts: [], channels: [] };
+    }
+    if (!guildConfig.truthdare[category].prompts) {
+      guildConfig.truthdare[category].prompts = [];
+    }
+    
+    const newId = Math.max(0, ...guildConfig.truthdare[category].prompts.map(p => p.id || 0)) + 1;
+    const newPrompt = { id: newId, type, text };
+    guildConfig.truthdare[category].prompts.push(newPrompt);
+    config.guilds[GUILD] = guildConfig;
+    writeConfig(config);
+    
+    console.log(`✅ Prompt A/V ${category}/${type} ajouté: #${newId}`);
+    res.json({ success: true, prompt: { id: `${category}-${newId}`, text, category, type } });
+  } catch (err) {
+    console.error('Error in POST /api/truthdare/prompt:', err);
+    res.status(500).json({ error: 'Failed to add prompt' });
+  }
+});
+
+// Update a prompt
+app.put('/api/truthdare/prompt/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { text, category, type } = req.body;
+    
+    // Parse id format: "category-numericId"
+    const [cat, numId] = id.split('-');
+    if (!['sfw', 'nsfw'].includes(cat)) {
+      return res.status(400).json({ error: 'Invalid category in ID' });
+    }
+    
+    const config = readConfig();
+    const guildConfig = config.guilds[GUILD] || {};
+    if (!guildConfig.truthdare || !guildConfig.truthdare[cat] || !guildConfig.truthdare[cat].prompts) {
+      return res.status(404).json({ error: 'No prompts found' });
+    }
+    
+    const promptId = parseInt(numId);
+    const prompt = guildConfig.truthdare[cat].prompts.find(p => p.id === promptId);
+    if (!prompt) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    
+    if (text) prompt.text = text;
+    if (type) prompt.type = type;
+    
+    config.guilds[GUILD] = guildConfig;
+    writeConfig(config);
+    
+    console.log(`✅ Prompt A/V ${cat} modifié: #${promptId}`);
+    res.json({ success: true, prompt: { id, text: prompt.text, category: cat, type: prompt.type } });
+  } catch (err) {
+    console.error('Error in PUT /api/truthdare/prompt/:id:', err);
+    res.status(500).json({ error: 'Failed to update prompt' });
+  }
+});
+
+// Delete a prompt
+app.post('/api/truthdare/prompt/:id/delete', (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Parse id format: "category-numericId"
+    const [cat, numId] = id.split('-');
+    if (!['sfw', 'nsfw'].includes(cat)) {
+      return res.status(400).json({ error: 'Invalid category in ID' });
+    }
+    
+    const config = readConfig();
+    const guildConfig = config.guilds[GUILD] || {};
+    if (!guildConfig.truthdare || !guildConfig.truthdare[cat] || !guildConfig.truthdare[cat].prompts) {
+      return res.status(404).json({ error: 'No prompts found' });
+    }
+    
+    const promptId = parseInt(numId);
+    const index = guildConfig.truthdare[cat].prompts.findIndex(p => p.id === promptId);
+    if (index === -1) {
+      return res.status(404).json({ error: 'Prompt not found' });
+    }
+    
+    guildConfig.truthdare[cat].prompts.splice(index, 1);
+    config.guilds[GUILD] = guildConfig;
+    writeConfig(config);
+    
+    console.log(`✅ Prompt A/V ${cat} supprimé: #${promptId}`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in DELETE /api/truthdare/prompt/:id:', err);
+    res.status(500).json({ error: 'Failed to delete prompt' });
+  }
+});
+
 // ============ Counting API Routes ============
 
 // Get counting configuration

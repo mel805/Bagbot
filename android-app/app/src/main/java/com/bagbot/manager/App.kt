@@ -337,7 +337,14 @@ fun LevelsFullScreen(
     }
 }
 
-// ---------------- FUN SCREEN (GIFs + Prompts) ----------------
+// ---------------- FUN SCREEN (GIFs + Prompts avec SFW/NSFW) ----------------
+data class TruthDarePrompt(
+    val id: String,
+    val text: String,
+    val category: String, // "sfw" or "nsfw"
+    val type: String // "truth" or "dare"
+)
+
 @Composable
 fun FunFullScreen(
     api: ApiClient,
@@ -346,23 +353,37 @@ fun FunFullScreen(
     snackbar: SnackbarHostState
 ) {
     var selectedTab by remember { mutableStateOf(0) }
-    var truthPrompts by remember { mutableStateOf<List<String>>(emptyList()) }
-    var darePrompts by remember { mutableStateOf<List<String>>(emptyList()) }
+    var prompts by remember { mutableStateOf<List<TruthDarePrompt>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var newPrompt by remember { mutableStateOf("") }
-    var selectedMode by remember { mutableStateOf("truth") }
+    var selectedCategory by remember { mutableStateOf("sfw") } // sfw or nsfw
+    var selectedType by remember { mutableStateOf("truth") } // truth or dare
+    var editingPrompt by remember { mutableStateOf<TruthDarePrompt?>(null) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var editText by remember { mutableStateOf("") }
     
     fun loadPrompts() {
         scope.launch {
             isLoading = true
             withContext(Dispatchers.IO) {
                 try {
-                    val response = api.getJson("/api/truthdare/prompts")
+                    val response = api.getJson("/api/truthdare/prompts/all")
                     val data = json.parseToJsonElement(response).jsonObject
-                    val prompts = data["prompts"]?.jsonObject
+                    val promptsList = data["prompts"]?.jsonArray?.mapNotNull { el ->
+                        try {
+                            val obj = el.jsonObject
+                            TruthDarePrompt(
+                                id = obj["id"]?.jsonPrimitive?.content ?: return@mapNotNull null,
+                                text = obj["text"]?.jsonPrimitive?.content ?: "",
+                                category = obj["category"]?.jsonPrimitive?.content ?: "sfw",
+                                type = obj["type"]?.jsonPrimitive?.content ?: "truth"
+                            )
+                        } catch (e: Exception) {
+                            null
+                        }
+                    } ?: emptyList()
                     withContext(Dispatchers.Main) {
-                        truthPrompts = prompts?.get("truth")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
-                        darePrompts = prompts?.get("dare")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+                        prompts = promptsList
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
@@ -383,8 +404,9 @@ fun FunFullScreen(
             withContext(Dispatchers.IO) {
                 try {
                     val body = buildJsonObject {
-                        put("mode", selectedMode)
                         put("text", newPrompt)
+                        put("category", selectedCategory)
+                        put("type", selectedType)
                     }
                     api.postJson("/api/truthdare/prompt", body.toString())
                     withContext(Dispatchers.Main) {
@@ -401,25 +423,122 @@ fun FunFullScreen(
         }
     }
     
+    fun updatePrompt(prompt: TruthDarePrompt, newText: String) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val body = buildJsonObject {
+                        put("id", prompt.id)
+                        put("text", newText)
+                        put("category", prompt.category)
+                        put("type", prompt.type)
+                    }
+                    api.putJson("/api/truthdare/prompt/${prompt.id}", body.toString())
+                    withContext(Dispatchers.Main) {
+                        showEditDialog = false
+                        editingPrompt = null
+                        loadPrompts()
+                        snackbar.showSnackbar("✅ Prompt modifié")
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+    
+    fun deletePrompt(prompt: TruthDarePrompt) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    api.postJson("/api/truthdare/prompt/${prompt.id}/delete", "{}")
+                    withContext(Dispatchers.Main) {
+                        loadPrompts()
+                        snackbar.showSnackbar("✅ Prompt supprimé")
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+    
     LaunchedEffect(Unit) { loadPrompts() }
+    
+    // Dialog pour éditer un prompt
+    if (showEditDialog && editingPrompt != null) {
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = { Text("Modifier le prompt") },
+            text = {
+                OutlinedTextField(
+                    value = editText,
+                    onValueChange = { editText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Texte du prompt") },
+                    minLines = 2
+                )
+            },
+            confirmButton = {
+                Button(onClick = { 
+                    editingPrompt?.let { updatePrompt(it, editText) }
+                }) {
+                    Text("Enregistrer")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showEditDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
     
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF1E1E1E)) {
             Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("🎲 Prompts AouV") })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("🎬 GIFs") })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("📋 Gestion Prompts") })
+            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("🎬 GIFs") })
         }
         
         when (selectedTab) {
             0 -> {
+                // Onglet original simplifié
                 Column(Modifier.fillMaxSize()) {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE91E63))) {
                         Column(Modifier.padding(16.dp)) {
                             Text("🎲 Action ou Vérité", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                             Spacer(Modifier.height(8.dp))
                             Row(Modifier.fillMaxWidth()) {
-                                FilterChip(selected = selectedMode == "truth", onClick = { selectedMode = "truth" }, label = { Text("💭 Vérités (${truthPrompts.size})") })
+                                FilterChip(
+                                    selected = selectedCategory == "sfw",
+                                    onClick = { selectedCategory = "sfw" },
+                                    label = { Text("✅ SFW (${prompts.count { it.category == "sfw" }})") }
+                                )
                                 Spacer(Modifier.width(8.dp))
-                                FilterChip(selected = selectedMode == "dare", onClick = { selectedMode = "dare" }, label = { Text("🎯 Actions (${darePrompts.size})") })
+                                FilterChip(
+                                    selected = selectedCategory == "nsfw",
+                                    onClick = { selectedCategory = "nsfw" },
+                                    label = { Text("🔞 NSFW (${prompts.count { it.category == "nsfw" }})") }
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Row(Modifier.fillMaxWidth()) {
+                                FilterChip(
+                                    selected = selectedType == "truth",
+                                    onClick = { selectedType = "truth" },
+                                    label = { Text("💭 Vérité") }
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                FilterChip(
+                                    selected = selectedType == "dare",
+                                    onClick = { selectedType = "dare" },
+                                    label = { Text("🎯 Action") }
+                                )
                             }
                             Spacer(Modifier.height(8.dp))
                             Row(Modifier.fillMaxWidth()) {
@@ -438,10 +557,10 @@ fun FunFullScreen(
                         }
                     }
                     LazyColumn(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(if (selectedMode == "truth") truthPrompts else darePrompts) { prompt ->
+                        items(prompts.filter { it.category == selectedCategory && it.type == selectedType }) { prompt ->
                             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
                                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                    Text(prompt, modifier = Modifier.weight(1f), color = Color.White)
+                                    Text(prompt.text, modifier = Modifier.weight(1f), color = Color.White)
                                 }
                             }
                         }
@@ -449,6 +568,104 @@ fun FunFullScreen(
                 }
             }
             1 -> {
+                // Nouvel onglet de gestion des prompts par catégorie
+                Column(Modifier.fillMaxSize().padding(16.dp)) {
+                    Text("📋 Gestion des Prompts", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // Sélection de la catégorie
+                    Row(Modifier.fillMaxWidth()) {
+                        FilterChip(
+                            selected = selectedCategory == "sfw",
+                            onClick = { selectedCategory = "sfw" },
+                            label = { Text("✅ SFW (${prompts.count { it.category == "sfw" }})") }
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        FilterChip(
+                            selected = selectedCategory == "nsfw",
+                            onClick = { selectedCategory = "nsfw" },
+                            label = { Text("🔞 NSFW (${prompts.count { it.category == "nsfw" }})") }
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(16.dp))
+                    
+                    // Affichage par type
+                    LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        // Section Vérité
+                        item {
+                            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF3F51B5))) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("💭 Vérités (${prompts.count { it.category == selectedCategory && it.type == "truth" }})", 
+                                         style = MaterialTheme.typography.titleMedium, 
+                                         fontWeight = FontWeight.Bold,
+                                         color = Color.White)
+                                }
+                            }
+                        }
+                        items(prompts.filter { it.category == selectedCategory && it.type == "truth" }) { prompt ->
+                            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(prompt.text, modifier = Modifier.weight(1f), color = Color.White)
+                                    Row {
+                                        IconButton(onClick = {
+                                            editingPrompt = prompt
+                                            editText = prompt.text
+                                            showEditDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Edit, "Modifier", tint = Color(0xFF2196F3))
+                                        }
+                                        IconButton(onClick = { deletePrompt(prompt) }) {
+                                            Icon(Icons.Default.Delete, "Supprimer", tint = Color(0xFFE53935))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Section Action
+                        item {
+                            Spacer(Modifier.height(8.dp))
+                            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFE91E63))) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text("🎯 Actions (${prompts.count { it.category == selectedCategory && it.type == "dare" }})", 
+                                         style = MaterialTheme.typography.titleMedium, 
+                                         fontWeight = FontWeight.Bold,
+                                         color = Color.White)
+                                }
+                            }
+                        }
+                        items(prompts.filter { it.category == selectedCategory && it.type == "dare" }) { prompt ->
+                            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                Row(
+                                    Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(prompt.text, modifier = Modifier.weight(1f), color = Color.White)
+                                    Row {
+                                        IconButton(onClick = {
+                                            editingPrompt = prompt
+                                            editText = prompt.text
+                                            showEditDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Edit, "Modifier", tint = Color(0xFF2196F3))
+                                        }
+                                        IconButton(onClick = { deletePrompt(prompt) }) {
+                                            Icon(Icons.Default.Delete, "Supprimer", tint = Color(0xFFE53935))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            2 -> {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Image, null, modifier = Modifier.size(64.dp), tint = Color.Gray)
