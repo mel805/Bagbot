@@ -54,7 +54,7 @@ import com.bagbot.manager.ui.screens.config.CountingConfigScreen
 import com.bagbot.manager.ui.screens.config.TruthDareConfigScreen
 import com.bagbot.manager.ui.screens.config.BoostConfigScreen
 import com.bagbot.manager.ui.screens.config.GeoFullScreen
-import com.bagbot.manager.ui.screens.config.EconomyFullScreen
+import com.bagbot.manager.ui.screens.config.EconomyCompleteScreen
 import com.bagbot.manager.ui.screens.config.LevelsFullScreen
 import com.bagbot.manager.ui.screens.config.ActionsGifsScreen
 import com.bagbot.manager.ui.screens.NewConfigHomeScreen
@@ -2573,12 +2573,14 @@ fun ConfigEditorScreen(
             return
         }
         "economy" -> {
-            EconomyFullScreen(
+            EconomyCompleteScreen(
+                configData = configData,
                 api = api,
                 json = json,
                 scope = scope,
                 snackbar = snackbar,
-                members = members
+                members = members,
+                onBack = onBack
             )
             return
         }
