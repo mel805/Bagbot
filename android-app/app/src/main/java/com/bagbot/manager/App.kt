@@ -40,6 +40,9 @@ import com.bagbot.manager.ui.screens.SplashScreen
 import com.bagbot.manager.ui.components.MemberSelector
 import com.bagbot.manager.ui.components.ChannelSelector
 import com.bagbot.manager.ui.components.RoleSelector
+import com.bagbot.manager.ui.screens.WelcomeConfigScreen
+import com.bagbot.manager.ui.screens.GoodbyeConfigScreen
+import com.bagbot.manager.ui.screens.TicketsConfigScreen
 
 private const val TAG = "BAG_APP"
 
@@ -2458,6 +2461,37 @@ fun ConfigEditorScreen(
     onBack: () -> Unit,
     onConfigUpdated: (String) -> Unit
 ) {
+    // Utiliser les écrans complets quand disponibles
+    when (sectionKey) {
+        "welcome" -> {
+            com.bagbot.manager.ui.screens.WelcomeConfigScreen(
+                api = api,
+                channels = channels,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+        "goodbye" -> {
+            com.bagbot.manager.ui.screens.GoodbyeConfigScreen(
+                api = api,
+                channels = channels,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+        "tickets" -> {
+            com.bagbot.manager.ui.screens.TicketsConfigScreen(
+                api = api,
+                channels = channels,
+                roles = roles,
+                json = json,
+                onBack = onBack
+            )
+            return
+        }
+    }
     val sectionData = configData?.get(sectionKey)?.jsonObject
     var isSaving by remember { mutableStateOf(false) }
     
