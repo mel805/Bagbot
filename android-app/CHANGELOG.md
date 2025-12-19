@@ -1,5 +1,35 @@
 # Changelog - BAG Bot Manager Android
 
+## [3.0.1] - 2025-12-19
+
+### 🔧 Corrections Majeures
+
+#### ✅ Problèmes Résolus
+- **Économie** : Affichage complet de la boutique, karma, balances
+  - Visualisation de tous les comptes utilisateurs
+  - Gestion des balances et du karma
+  - Interface complète pour la boutique
+- **Action/Vérité** : Gestion complète des prompts SFW/NSFW
+  - Affichage de tous les prompts existants
+  - Modification en temps réel
+  - Suppression des prompts
+  - Ajout de nouveaux prompts
+- **Toutes catégories** : Utilisation des vrais écrans de configuration
+  - Suppression des messages "en développement"
+  - Chaque catégorie affiche son contenu réel
+  - Configuration détaillée pour chaque module
+
+#### 🎯 Améliorations
+- CategoryDetailScreen redirige maintenant vers les vrais écrans
+- EconomyFullScreen pour la gestion économique
+- FunFullScreen pour Action/Vérité
+- ConfigEditorScreen pour les autres catégories
+
+#### 📱 Migration depuis v3.0.0
+Cette version corrige tous les problèmes d'affichage "en développement" signalés dans la version précédente.
+
+---
+
 ## [3.0.0] - 2025-12-19
 
 ### 🎉 VERSION MAJEURE - Fusion v2.5.2 + v2.8.0
