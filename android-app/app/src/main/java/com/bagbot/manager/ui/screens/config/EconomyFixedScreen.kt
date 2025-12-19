@@ -448,6 +448,5 @@ fun EconomyKarma(economyData: JsonObject?, members: Map<String, String>) {
                 }
             }
         }
-        }
     }
 }
