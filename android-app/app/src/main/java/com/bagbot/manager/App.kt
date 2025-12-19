@@ -69,7 +69,7 @@ val dashboardCategories = listOf(
     DashboardCategory("logs", "📝 Logs", Icons.Default.Description, Color(0xFF95A5A6), "Journaux de modération"),
     DashboardCategory("tickets", "🎫 Tickets", Icons.Default.ConfirmationNumber, Color(0xFFE67E22), "Système de tickets"),
     DashboardCategory("confess", "💬 Confessions", Icons.Default.Chat, Color(0xFFE91E63), "Confessions anonymes"),
-    DashboardCategory("welcome", "👋 Welcome", Icons.Default.Waving, Color(0xFF3498DB), "Messages de bienvenue"),
+    DashboardCategory("welcome", "👋 Welcome", Icons.Default.EmojiPeople, Color(0xFF3498DB), "Messages de bienvenue"),
     DashboardCategory("goodbye", "👋 Goodbye", Icons.Default.ExitToApp, Color(0xFF8B4513), "Messages d'au revoir"),
     DashboardCategory("staff", "👥 Staff", Icons.Default.AdminPanelSettings, Color(0xFFFFD700), "Gestion du staff"),
     DashboardCategory("autokick", "👢 AutoKick", Icons.Default.RemoveCircle, Color(0xFFDC143C), "Kick automatique"),
