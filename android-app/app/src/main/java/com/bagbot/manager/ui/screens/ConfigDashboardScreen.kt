@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.bagbot.manager.ApiClient
 import com.bagbot.manager.ui.components.ChannelSelector
@@ -73,7 +74,7 @@ fun ConfigDashboardScreen(
     isLoading: Boolean,
     onReloadConfig: () -> Unit,
 ) {
-    var tabIndex by remember { mutableIntStateOf(0) }
+    var selectedTab by remember { mutableStateOf<DashTab?>(null) }
     val tabs = remember { DashTab.entries }
 
     Column(Modifier.fillMaxSize()) {
@@ -83,35 +84,29 @@ fun ConfigDashboardScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(
-                    "⚙️ Configuration (dashboard)",
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    "${members.size} membres • ${channels.size} salons • ${roles.size} rôles",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Back button when a category is selected
+                if (selectedTab != null) {
+                    IconButton(onClick = { selectedTab = null }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Retour", tint = Color.White)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                }
+                Column {
+                    Text(
+                        if (selectedTab == null) "⚙️ Configuration (dashboard)" else "⚙️ ${selectedTab?.label}",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        "${members.size} membres • ${channels.size} salons • ${roles.size} rôles",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
             }
             IconButton(onClick = onReloadConfig, enabled = !isLoading) {
                 Icon(Icons.Default.Refresh, contentDescription = "Recharger", tint = Color.White)
-            }
-        }
-
-        ScrollableTabRow(
-            selectedTabIndex = tabIndex,
-            edgePadding = 12.dp,
-            containerColor = Color(0xFF121212),
-            contentColor = Color.White
-        ) {
-            tabs.forEachIndexed { idx, t ->
-                Tab(
-                    selected = tabIndex == idx,
-                    onClick = { tabIndex = idx },
-                    text = { Text(t.label, maxLines = 1) }
-                )
             }
         }
 
@@ -122,28 +117,81 @@ fun ConfigDashboardScreen(
             return
         }
 
-        when (tabs[tabIndex]) {
-            DashTab.Economy -> EconomyConfigTab(configData, api, json, scope, snackbar)
-            DashTab.Levels -> LevelsConfigTab(configData, roles, api, json, scope, snackbar)
-            DashTab.Booster -> BoosterConfigTab(configData, roles, api, json, scope, snackbar)
-            DashTab.Counting -> CountingConfigTab(configData, channels, api, json, scope, snackbar)
-            DashTab.TruthDare -> TruthDareConfigTab(channels, api, json, scope, snackbar)
-            DashTab.Actions -> ActionsConfigTab(configData, api, json, scope, snackbar)
-            DashTab.Tickets -> TicketsConfigTab(configData, channels, roles, api, json, scope, snackbar)
-            DashTab.Logs -> LogsConfigTab(configData, members, channels, roles, api, json, scope, snackbar)
-            DashTab.Confess -> ConfessConfigTab(configData, channels, api, json, scope, snackbar)
-            DashTab.Welcome -> WelcomeConfigTab(api, json, channels, scope, snackbar)
-            DashTab.Goodbye -> GoodbyeConfigTab(api, json, channels, scope, snackbar)
-            DashTab.Staff -> StaffConfigTab(configData, roles, api, json, scope, snackbar)
-            DashTab.AutoKick -> AutoKickConfigTab(configData, roles, api, json, scope, snackbar)
-            DashTab.Inactivity -> InactivityConfigTab(members, roles, api, json, scope, snackbar)
-            DashTab.AutoThread -> AutoThreadConfigTab(configData, channels, api, json, scope, snackbar)
-            DashTab.Disboard -> DisboardConfigTab(configData, channels, api, json, scope, snackbar)
-            DashTab.Geo -> GeoConfigTab(configData, members)
-            DashTab.Backups -> BackupsTab(api, json, scope, snackbar)
-            DashTab.Control -> ControlTab(api, json, scope, snackbar)
-            DashTab.Music -> MusicTab(api, json, scope, snackbar)
-            DashTab.Raw -> RawConfigTab(configData, json)
+        // Show grid of category cards or selected category content
+        if (selectedTab == null) {
+            // Grid view of categories
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                itemsIndexedGrid(tabs) { _, tab ->
+                    CategoryCard(
+                        label = tab.label,
+                        onClick = { selectedTab = tab }
+                    )
+                }
+            }
+        } else {
+            // Show selected category content
+            when (selectedTab) {
+                DashTab.Economy -> EconomyConfigTab(configData, api, json, scope, snackbar)
+                DashTab.Levels -> LevelsConfigTab(configData, roles, api, json, scope, snackbar)
+                DashTab.Booster -> BoosterConfigTab(configData, roles, api, json, scope, snackbar)
+                DashTab.Counting -> CountingConfigTab(configData, channels, api, json, scope, snackbar)
+                DashTab.TruthDare -> TruthDareConfigTab(channels, api, json, scope, snackbar)
+                DashTab.Actions -> ActionsConfigTab(configData, api, json, scope, snackbar)
+                DashTab.Tickets -> TicketsConfigTab(configData, channels, roles, api, json, scope, snackbar)
+                DashTab.Logs -> LogsConfigTab(configData, members, channels, roles, api, json, scope, snackbar)
+                DashTab.Confess -> ConfessConfigTab(configData, channels, api, json, scope, snackbar)
+                DashTab.Welcome -> WelcomeConfigTab(api, json, channels, scope, snackbar)
+                DashTab.Goodbye -> GoodbyeConfigTab(api, json, channels, scope, snackbar)
+                DashTab.Staff -> StaffConfigTab(configData, roles, api, json, scope, snackbar)
+                DashTab.AutoKick -> AutoKickConfigTab(configData, roles, api, json, scope, snackbar)
+                DashTab.Inactivity -> InactivityConfigTab(members, roles, api, json, scope, snackbar)
+                DashTab.AutoThread -> AutoThreadConfigTab(configData, channels, api, json, scope, snackbar)
+                DashTab.Disboard -> DisboardConfigTab(configData, channels, api, json, scope, snackbar)
+                DashTab.Geo -> GeoConfigTab(configData, members)
+                DashTab.Backups -> BackupsTab(api, json, scope, snackbar)
+                DashTab.Control -> ControlTab(api, json, scope, snackbar)
+                DashTab.Music -> MusicTab(api, json, scope, snackbar)
+                DashTab.Raw -> RawConfigTab(configData, json)
+                null -> {} // Should not happen
+            }
+        }
+    }
+}
+
+@Composable
+private fun CategoryCard(
+    label: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1E1E1E)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
