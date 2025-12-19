@@ -22,6 +22,7 @@ import com.bagbot.manager.ApiClient
 import com.bagbot.manager.ui.components.ChannelSelector
 import com.bagbot.manager.ui.components.MemberSelector
 import com.bagbot.manager.ui.components.RoleSelector
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -644,7 +645,7 @@ private fun ActionsConfigTab(
     val initialMessages = actions?.get("messages")
     val initialConfig = actions?.get("config")
 
-    val prettyJson = remember(json) { json.copy(prettyPrint = true) }
+    val prettyJson = remember { Json { prettyPrint = true } }
     fun pretty(el: JsonElement?): String = try {
         if (el == null) "{}" else prettyJson.encodeToString(JsonElement.serializer(), el)
     } catch (_: Exception) {
@@ -1129,17 +1130,9 @@ private fun TruthDareConfigTab(
         item {
             SectionCard(title = "🎲 A/V", subtitle = "Channels + prompts (SFW / NSFW)") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    SegmentedButtonRow {
-                        SegmentedButton(
-                            selected = mode == "sfw",
-                            onClick = { mode = "sfw" },
-                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                        ) { Text("🟢 SFW") }
-                        SegmentedButton(
-                            selected = mode == "nsfw",
-                            onClick = { mode = "nsfw" },
-                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                        ) { Text("🔴 NSFW") }
+                    TabRow(selectedTabIndex = if (mode == "sfw") 0 else 1) {
+                        Tab(selected = mode == "sfw", onClick = { mode = "sfw" }, text = { Text("🟢 SFW") })
+                        Tab(selected = mode == "nsfw", onClick = { mode = "nsfw" }, text = { Text("🔴 NSFW") })
                     }
                     IconButton(onClick = { load() }, enabled = !isLoading) {
                         Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir", tint = Color.White)
@@ -1901,17 +1894,9 @@ private fun ConfessConfigTab(
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             SectionCard(title = "💬 Confess", subtitle = "SFW/NSFW + logs + options") {
-                SegmentedButtonRow {
-                    SegmentedButton(
-                        selected = mode == "sfw",
-                        onClick = { mode = "sfw" },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
-                    ) { Text("🟢 SFW") }
-                    SegmentedButton(
-                        selected = mode == "nsfw",
-                        onClick = { mode = "nsfw" },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
-                    ) { Text("🔴 NSFW") }
+                TabRow(selectedTabIndex = if (mode == "sfw") 0 else 1) {
+                    Tab(selected = mode == "sfw", onClick = { mode = "sfw" }, text = { Text("🟢 SFW") })
+                    Tab(selected = mode == "nsfw", onClick = { mode = "nsfw" }, text = { Text("🔴 NSFW") })
                 }
                 Spacer(Modifier.height(10.dp))
                 ChannelSelector(channels, logChannelId, { logChannelId = it }, label = "Channel des logs")
@@ -2539,7 +2524,7 @@ private fun InactivityConfigTab(
                                         put("enabled", enabled)
                                         put("delayDays", delayDays.toIntOrNull() ?: 30)
                                         put("excludedRoleIds", JsonArray(excludedRoleIds.map { JsonPrimitive(it) }))
-                                        put("inactiveRoleId", inactiveRoleId ?: JsonNull)
+                                        put("inactiveRoleId", inactiveRoleId?.let { JsonPrimitive(it) } ?: JsonNull)
                                     }
                                     api.postJson("/api/inactivity", json.encodeToString(JsonObject.serializer(), body))
                                     withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Inactivité sauvegardée") }
@@ -2841,7 +2826,7 @@ private fun RawConfigTab(configData: JsonObject?, json: Json) {
     val pretty = remember(configData) {
         try {
             if (configData == null) "null"
-            else json.copy(prettyPrint = true).encodeToString(JsonObject.serializer(), configData)
+            else Json { prettyPrint = true }.encodeToString(JsonObject.serializer(), configData)
         } catch (_: Exception) {
             configData?.toString() ?: "null"
         }
