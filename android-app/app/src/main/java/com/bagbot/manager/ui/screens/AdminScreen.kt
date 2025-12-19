@@ -87,7 +87,7 @@ fun AdminScreen(
 }
 
 @Composable
-private fun AccessManagementTab(
+fun AccessManagementTab(
     api: ApiClient,
     members: Map<String, String>,
     allowedUsers: List<String>,
@@ -100,49 +100,51 @@ private fun AccessManagementTab(
     json: Json,
     scope: kotlinx.coroutines.CoroutineScope
 ) {
+    var userToRevoke by remember { mutableStateOf<String?>(null) }
+    var showRevokeConfirm by remember { mutableStateOf(false) }
+    
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Header card
         item {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = BagPurple
-            )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = BagPurple)
             ) {
-                Icon(
-                    Icons.Default.Security,
-                    contentDescription = null,
-                    tint = BagWhite,
-                    modifier = Modifier.size(32.dp)
-                )
-                Spacer(Modifier.width(16.dp))
-                Column {
-                    Text(
-                        "Gestion des Accès",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = BagWhite
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Security,
+                        contentDescription = null,
+                        tint = BagWhite,
+                        modifier = Modifier.size(32.dp)
                     )
-                    Text(
-                        "${allowedUsers.size} utilisateur(s) autorisé(s)",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = BagLightPurple
-                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            "Gestion des Accès",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = BagWhite
+                        )
+                        Text(
+                            "${allowedUsers.size} utilisateur(s) autorisé(s)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = BagLightPurple
+                        )
+                    }
                 }
             }
         }
         
-        Spacer(Modifier.height(24.dp))
-        
+        // Add user card
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -197,8 +199,7 @@ private fun AccessManagementTab(
             }
         }
         
-        item {
-        
+        // Revoke card
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -226,9 +227,6 @@ private fun AccessManagementTab(
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                     )
                     Spacer(Modifier.height(12.dp))
-                    
-                    var userToRevoke by remember { mutableStateOf<String?>(null) }
-                    var showRevokeConfirm by remember { mutableStateOf(false) }
                     
                     MemberSelector(
                         members = allowedUsers.associateWith { members[it] ?: "Utilisateur $it" },
@@ -312,6 +310,7 @@ private fun AccessManagementTab(
             }
         }
         
+        // Title for list
         item {
             Text(
                 "Utilisateurs autorisés",
@@ -319,8 +318,7 @@ private fun AccessManagementTab(
             )
         }
         
-        item {
-        
+        // Loading or empty state
         if (isLoading) {
             item {
                 Box(
@@ -341,7 +339,10 @@ private fun AccessManagementTab(
                     )
                 }
             }
-        } else {
+        }
+        
+        // List of allowed users
+        if (!isLoading && allowedUsers.isNotEmpty()) {
             items(allowedUsers) { userId ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -405,7 +406,7 @@ private fun AccessManagementTab(
 }
 
 @Composable
-private fun SessionsTab(
+fun SessionsTab(
     api: ApiClient,
     members: Map<String, String>,
     json: Json,
@@ -516,20 +517,22 @@ private fun SessionsTab(
                             Icon(
                                 Icons.Default.People,
                                 contentDescription = null,
-                                tint = androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.5f),
+                                tint = Color.Gray.copy(alpha = 0.5f),
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(Modifier.height(16.dp))
                             Text(
                                 "Aucune session active",
-                                color = androidx.compose.ui.graphics.Color.Gray,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
                             )
                         }
                     }
                 }
             }
-        } else {
+        }
+        
+        if (!isLoading && sessions.isNotEmpty()) {
             items(sessions) { session ->
                 val userId = session["userId"]?.jsonPrimitive?.contentOrNull ?: ""
                 val userRolesList = session["roles"]?.jsonArray?.mapNotNull { 
@@ -546,9 +549,9 @@ private fun SessionsTab(
                 }
                 
                 val roleColor = when {
-                    userId in founderIds -> androidx.compose.ui.graphics.Color(0xFFFFD700)
-                    userRolesList.any { it in staffRoleIds } -> androidx.compose.ui.graphics.Color(0xFF5865F2)
-                    else -> androidx.compose.ui.graphics.Color.Gray
+                    userId in founderIds -> Color(0xFFFFD700)
+                    userRolesList.any { it in staffRoleIds } -> Color(0xFF5865F2)
+                    else -> Color.Gray
                 }
                 
                 Card(
@@ -572,9 +575,9 @@ private fun SessionsTab(
                                 modifier = Modifier
                                     .size(12.dp)
                                     .background(
-                                        if (isOnline) androidx.compose.ui.graphics.Color(0xFF57F287) 
-                                        else androidx.compose.ui.graphics.Color.Gray,
-                                        shape = androidx.compose.foundation.shape.CircleShape
+                                        if (isOnline) Color(0xFF57F287) 
+                                        else Color.Gray,
+                                        shape = CircleShape
                                     )
                             )
                             Spacer(Modifier.width(12.dp))
@@ -582,7 +585,7 @@ private fun SessionsTab(
                                 Text(
                                     members[userId] ?: "Utilisateur inconnu",
                                     style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold
                                 )
                                 Text(
                                     "ID: ${userId.takeLast(8)}",
@@ -594,7 +597,7 @@ private fun SessionsTab(
                                     role,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = roleColor,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    fontWeight = FontWeight.Bold
                                 )
                                 if (lastSeen.isNotBlank()) {
                                     Text(
