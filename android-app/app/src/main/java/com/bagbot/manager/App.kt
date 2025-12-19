@@ -1868,75 +1868,32 @@ fun CategoryDetailScreen(
     snackbar: SnackbarHostState,
     onBack: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize()) {
-        // Header avec retour
-        Card(
-            Modifier.fillMaxWidth().padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = category.color.copy(alpha = 0.15f))
-        ) {
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, "Retour", tint = category.color)
-                }
-                Spacer(Modifier.width(8.dp))
-                Icon(category.icon, null, tint = category.color, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        category.name,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Text(
-                        category.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray
-                    )
-                }
-            }
+    // Utiliser ConfigEditorScreen pour afficher le contenu réel de chaque catégorie
+    // au lieu d'afficher "en développement"
+    when (category.id) {
+        "economy" -> {
+            // Afficher l'écran d'économie complète
+            EconomyFullScreen(api, json, scope, snackbar, members)
         }
-        
-        // Contenu de la catégorie
-        LazyColumn(
-            Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            item {
-                Card(
-                    Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-                ) {
-                    Column(Modifier.padding(16.dp)) {
-                        Text(
-                            "Configuration ${category.name}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Cette section permettra de configurer ${category.name}",
-                            color = Color.Gray
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    snackbar.showSnackbar("Fonctionnalité en développement pour ${category.name}")
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = category.color)
-                        ) {
-                            Text("Configurer")
-                        }
-                    }
-                }
-            }
+        "truthdare" -> {
+            // Afficher l'écran Action/Vérité
+            FunFullScreen(api, json, scope, snackbar)
+        }
+        else -> {
+            // Pour les autres catégories, utiliser ConfigEditorScreen
+            ConfigEditorScreen(
+                sectionKey = category.id,
+                configData = configData,
+                members = members,
+                channels = channels,
+                roles = roles,
+                api = api,
+                json = json,
+                scope = scope,
+                snackbar = snackbar,
+                onBack = onBack,
+                onConfigUpdated = {}
+            )
         }
     }
 }
