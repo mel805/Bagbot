@@ -15,13 +15,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.bagbot.manager.ApiClient
 import com.bagbot.manager.ui.components.ChannelSelector
 import com.bagbot.manager.ui.components.MemberSelector
@@ -1919,19 +1923,44 @@ private fun ActionGifsTab(
         item {
             SectionCard(title = "✅ GIFs Succès (${successGifs.size})") {
                 successGifs.forEachIndexed { index, url ->
-                    Row(
+                    Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
                     ) {
-                        Text(
-                            url.take(50) + if (url.length > 50) "..." else "",
-                            modifier = Modifier.weight(1f),
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        IconButton(onClick = { successGifs.removeAt(index) }) {
-                            Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                        Column(Modifier.padding(12.dp)) {
+                            // Aperçu GIF avec AsyncImage (Coil)
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp)
+                                    .background(Color.Black),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "GIF ${index + 1}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            
+                            Spacer(Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    url.take(40) + if (url.length > 40) "..." else "",
+                                    modifier = Modifier.weight(1f),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                IconButton(onClick = { successGifs.removeAt(index) }) {
+                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                }
+                            }
                         }
                     }
                 }
@@ -1988,19 +2017,44 @@ private fun ActionGifsTab(
         item {
             SectionCard(title = "❌ GIFs Échec (${failGifs.size})") {
                 failGifs.forEachIndexed { index, url ->
-                    Row(
+                    Card(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
                     ) {
-                        Text(
-                            url.take(50) + if (url.length > 50) "..." else "",
-                            modifier = Modifier.weight(1f),
-                            color = Color.White,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                        IconButton(onClick = { failGifs.removeAt(index) }) {
-                            Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                        Column(Modifier.padding(12.dp)) {
+                            // Aperçu GIF avec AsyncImage (Coil)
+                            androidx.compose.foundation.layout.Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(150.dp)
+                                    .background(Color.Black),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = url,
+                                    contentDescription = "GIF ${index + 1}",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            
+                            Spacer(Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    url.take(40) + if (url.length > 40) "..." else "",
+                                    modifier = Modifier.weight(1f),
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                IconButton(onClick = { failGifs.removeAt(index) }) {
+                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                }
+                            }
                         }
                     }
                 }
@@ -2103,10 +2157,24 @@ private fun ActionMessagesTab(
     scope: kotlinx.coroutines.CoroutineScope,
     snackbar: SnackbarHostState
 ) {
+    val messagesData = actions?.obj("messages")?.obj(selectedActionKey)
+    val successMessages = remember(messagesData, selectedActionKey) {
+        messagesData?.arr("success")?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toMutableStateList() ?: mutableStateListOf()
+    }
+    val failMessages = remember(messagesData, selectedActionKey) {
+        messagesData?.arr("fail")?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toMutableStateList() ?: mutableStateListOf()
+    }
+    
+    var showAddSuccess by remember { mutableStateOf(false) }
+    var showAddFail by remember { mutableStateOf(false) }
+    var newMessage by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
+    
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        // Action selector
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -2146,37 +2214,228 @@ private fun ActionMessagesTab(
             }
         }
         
+        // Success Messages
         item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(40.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.Default.Chat,
-                            contentDescription = null,
-                            tint = Color.Gray.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Gestion des messages disponible sur le dashboard web",
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "http://88.174.155.230:33002",
-                            color = Color(0xFF5865F2),
-                            textAlign = TextAlign.Center,
-                            style = MaterialTheme.typography.bodySmall
-                        )
+            SectionCard(title = "✅ Messages Succès (${successMessages.size})") {
+                successMessages.forEachIndexed { index, message ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            var editedMessage by remember(message) { mutableStateOf(message) }
+                            
+                            OutlinedTextField(
+                                value = editedMessage,
+                                onValueChange = { editedMessage = it },
+                                label = { Text("Message ${index + 1}") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2
+                            )
+                            
+                            Spacer(Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { 
+                                        successMessages[index] = editedMessage
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = editedMessage != message
+                                ) {
+                                    Text("💾 Modifier")
+                                }
+                                OutlinedButton(
+                                    onClick = { successMessages.removeAt(index) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Supprimer")
+                                }
+                            }
+                        }
                     }
+                }
+                
+                if (showAddSuccess) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newMessage,
+                        onValueChange = { newMessage = it },
+                        label = { Text("Nouveau message") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                showAddSuccess = false
+                                newMessage = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Annuler")
+                        }
+                        Button(
+                            onClick = {
+                                if (newMessage.isNotBlank()) {
+                                    successMessages.add(newMessage)
+                                    newMessage = ""
+                                    showAddSuccess = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = newMessage.isNotBlank()
+                        ) {
+                            Text("Ajouter")
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showAddSuccess = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ajouter un message succès")
+                    }
+                }
+            }
+        }
+        
+        // Fail Messages
+        item {
+            SectionCard(title = "❌ Messages Échec (${failMessages.size})") {
+                failMessages.forEachIndexed { index, message ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            var editedMessage by remember(message) { mutableStateOf(message) }
+                            
+                            OutlinedTextField(
+                                value = editedMessage,
+                                onValueChange = { editedMessage = it },
+                                label = { Text("Message ${index + 1}") },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2
+                            )
+                            
+                            Spacer(Modifier.height(8.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { 
+                                        failMessages[index] = editedMessage
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    enabled = editedMessage != message
+                                ) {
+                                    Text("💾 Modifier")
+                                }
+                                OutlinedButton(
+                                    onClick = { failMessages.removeAt(index) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Supprimer")
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (showAddFail) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newMessage,
+                        onValueChange = { newMessage = it },
+                        label = { Text("Nouveau message") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 2
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = {
+                                showAddFail = false
+                                newMessage = ""
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Annuler")
+                        }
+                        Button(
+                            onClick = {
+                                if (newMessage.isNotBlank()) {
+                                    failMessages.add(newMessage)
+                                    newMessage = ""
+                                    showAddFail = false
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = newMessage.isNotBlank()
+                        ) {
+                            Text("Ajouter")
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showAddFail = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Add, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ajouter un message échec")
+                    }
+                }
+            }
+        }
+        
+        // Save button
+        item {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val body = buildJsonObject {
+                                    put(selectedActionKey, buildJsonObject {
+                                        put("success", JsonArray(successMessages.map { JsonPrimitive(it) }))
+                                        put("fail", JsonArray(failMessages.map { JsonPrimitive(it) }))
+                                    })
+                                }
+                                api.postJson("/api/actions/messages", json.encodeToString(JsonObject.serializer(), body))
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Messages sauvegardés") }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
+                            } finally {
+                                withContext(Dispatchers.Main) { isSaving = false }
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !isSaving
+            ) {
+                if (isSaving) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White)
+                else {
+                    Icon(Icons.Default.Save, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sauvegarder les Messages")
                 }
             }
         }
@@ -2367,6 +2626,9 @@ private fun MusicTab(
     var playlists by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var uploads by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var totalSize by remember { mutableStateOf(0L) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var showDeletePlaylistConfirm by remember { mutableStateOf<String?>(null) }
+    var showDeleteUploadConfirm by remember { mutableStateOf<String?>(null) }
 
     fun load() {
         scope.launch {
@@ -2394,35 +2656,293 @@ private fun MusicTab(
 
     LaunchedEffect(Unit) { load() }
 
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            SectionCard(title = "🎵 Musique", subtitle = "Playlists & uploads (read-only)") {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Total size: $totalSize bytes", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                    IconButton(onClick = { load() }, enabled = !isLoading) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir", tint = Color.White)
+    Column(Modifier.fillMaxSize()) {
+        // Header
+        SectionCard(title = "🎵 Musique", subtitle = "Playlists & uploads") {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Taille totale: ${totalSize / 1024 / 1024} MB", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                IconButton(onClick = { load() }, enabled = !isLoading) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir", tint = Color.White)
+                }
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            
+            TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF1E1E1E)) {
+                Tab(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    text = { Text("📚 Playlists (${playlists.size})") }
+                )
+                Tab(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    text = { Text("📁 Uploads (${uploads.size})") }
+                )
+            }
+        }
+        
+        when (selectedTab) {
+            0 -> {
+                // Playlists
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (isLoading) {
+                        item {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    } else if (playlists.isEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            contentDescription = null,
+                                            tint = Color.Gray.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(64.dp)
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            "Aucune playlist",
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        items(playlists) { p ->
+                            val name = p["name"]?.jsonPrimitive?.contentOrNull ?: "?"
+                            val trackCount = p["trackCount"]?.jsonPrimitive?.intOrNull ?: 0
+                            val updatedAt = p["updatedAt"]?.jsonPrimitive?.longOrNull ?: 0L
+                            val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRENCH).format(java.util.Date(updatedAt))
+                            
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            name,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyLarge
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "$trackCount piste(s)",
+                                            color = Color.Gray,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            "Mis à jour: $date",
+                                            color = Color.Gray,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    
+                                    IconButton(onClick = { showDeletePlaylistConfirm = name }) {
+                                        Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-            }
-        }
-        item {
-            SectionCard(title = "📚 Playlists (${playlists.size})") {
-                playlists.forEach { p ->
-                    val name = p["name"]?.jsonPrimitive?.contentOrNull ?: "?"
-                    val trackCount = p["trackCount"]?.jsonPrimitive?.intOrNull ?: 0
-                    Text("• $name ($trackCount tracks)", color = Color.White)
+                
+                // Delete playlist confirmation
+                if (showDeletePlaylistConfirm != null) {
+                    AlertDialog(
+                        onDismissRequest = { showDeletePlaylistConfirm = null },
+                        title = { Text("⚠️ Confirmation") },
+                        text = {
+                            Text("Voulez-vous vraiment supprimer la playlist \"$showDeletePlaylistConfirm\" ?")
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                api.deleteJson("/api/music/playlist/${showDeletePlaylistConfirm}")
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("✅ Playlist supprimée")
+                                                    showDeletePlaylistConfirm = null
+                                                }
+                                                load()
+                                            } catch (e: Exception) {
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED4245))
+                            ) {
+                                Text("Supprimer")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeletePlaylistConfirm = null }) {
+                                Text("Annuler")
+                            }
+                        }
+                    )
                 }
             }
-        }
-        item {
-            SectionCard(title = "📁 Uploads (${uploads.size})") {
-                uploads.take(25).forEach { u ->
-                    val fn = u["filename"]?.jsonPrimitive?.contentOrNull ?: "?"
-                    val size = u["size"]?.jsonPrimitive?.longOrNull ?: 0L
-                    Text("• $fn ($size)", color = Color.White)
+            
+            1 -> {
+                // Uploads
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (isLoading) {
+                        item {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator()
+                            }
+                        }
+                    } else if (uploads.isEmpty()) {
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(40.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(
+                                            Icons.Default.AudioFile,
+                                            contentDescription = null,
+                                            tint = Color.Gray.copy(alpha = 0.5f),
+                                            modifier = Modifier.size(64.dp)
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            "Aucun fichier uploadé",
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        items(uploads) { u ->
+                            val fn = u["filename"]?.jsonPrimitive?.contentOrNull ?: "?"
+                            val size = u["size"]?.jsonPrimitive?.longOrNull ?: 0L
+                            val uploadedAt = u["uploadedAt"]?.jsonPrimitive?.longOrNull ?: 0L
+                            val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.FRENCH).format(java.util.Date(uploadedAt))
+                            val sizeKb = size / 1024
+                            val sizeMb = sizeKb / 1024.0
+                            
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            fn,
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            maxLines = 2
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            "Taille: ${if (sizeMb >= 1) "%.2f MB".format(sizeMb) else "$sizeKb KB"}",
+                                            color = Color.Gray,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                        Text(
+                                            "Uploadé: $date",
+                                            color = Color.Gray,
+                                            style = MaterialTheme.typography.bodySmall
+                                        )
+                                    }
+                                    
+                                    IconButton(onClick = { showDeleteUploadConfirm = fn }) {
+                                        Icon(Icons.Default.Delete, null, tint = Color(0xFFED4245))
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                if (uploads.size > 25) {
-                    Text("… +${uploads.size - 25} autres", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                
+                // Delete upload confirmation
+                if (showDeleteUploadConfirm != null) {
+                    AlertDialog(
+                        onDismissRequest = { showDeleteUploadConfirm = null },
+                        title = { Text("⚠️ Confirmation") },
+                        text = {
+                            Column {
+                                Text("Voulez-vous vraiment supprimer ce fichier ?")
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    showDeleteUploadConfirm!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                api.deleteJson("/api/music/upload/${showDeleteUploadConfirm}")
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("✅ Fichier supprimé")
+                                                    showDeleteUploadConfirm = null
+                                                }
+                                                load()
+                                            } catch (e: Exception) {
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFED4245))
+                            ) {
+                                Text("Supprimer")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDeleteUploadConfirm = null }) {
+                                Text("Annuler")
+                            }
+                        }
+                    )
                 }
             }
         }
