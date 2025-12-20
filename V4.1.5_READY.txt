@@ -1,0 +1,68 @@
+# 🎉 BAG Bot Manager v4.1.5 - READY
+
+## ✅ Compilation réussie !
+
+**Lien de téléchargement**: https://github.com/mel805/Bagbot/releases/tag/v4.1.5
+
+## 📋 Résumé des modifications
+
+### ✨ Nouvelles fonctionnalités
+
+#### 🎵 Onglet Musique (NOUVEAU!)
+- **Navigation**: Nouveau bouton "Musique" dans la barre de navigation (tab 4)
+- **Sous-onglets**:
+  - 🎵 **Uploads**: Liste complète des fichiers audio uploadés
+    - Affichage du nom des fichiers
+    - Compteur de fichiers
+    - Bouton rafraîchir
+    - Message si aucune musique
+  - 📋 **Playlists**: Placeholder (à venir)
+- **Formats supportés**: MP3, WAV, M4A, OGG, FLAC
+- **Accès**: Tous les utilisateurs
+
+#### 🔌 Backend
+- **Endpoint `GET /api/music/uploads`**: Liste les fichiers audio dans `data/uploads/`
+- **Endpoint `GET /api/dashboard/stats`**: Statistiques serveur temps réel
+- Tous les endpoints opérationnels et vérifiés
+
+### 📝 Corrections
+- Restauration de l'onglet Musique qui avait disparu
+- Vérification complète de tous les endpoints backend
+- Workflow GitHub Actions optimisé avec `gradle clean`
+
+### ⏭️ Reporté à v4.1.6
+#### 🎲 Séparation Actions/Vérités dans A/V
+- **Raison du report**: Erreur de compilation mystérieuse
+  - `Unresolved reference` pour toutes les fonctions après TruthDareConfigTab
+  - Problème potentiel avec la taille du fichier ConfigDashboardScreen.kt (5712 lignes)
+  - v4.1.4 compile ✅, v4.1.5 avec modifications A/V échoue ❌
+- **Solution future**: Refactorisation ou implémentation alternative
+
+## 📊 Versions
+
+- **Version**: 4.1.5 (versionCode 415)
+- **Min SDK**: 26 (Android 8.0)
+- **Target SDK**: 34 (Android 14)
+- **Taille estimée**: ~15-25 MB
+
+## 🔗 Liens
+
+- **APK**: https://github.com/mel805/Bagbot/releases/tag/v4.1.5
+- **Dashboard Web**: http://88.174.155.230:33002
+- **Repository**: https://github.com/mel805/Bagbot
+
+## 📝 Commits
+
+- `feat(v4.1.5): Musique, A/V séparés, endpoints complets` (0584b5b)
+- `fix(v4.1.5): Icones Material manquantes` (ce71829)
+- `fix: Add Gradle clean before build` (79fe2c0)
+- `fix(v4.1.5): Rollback A/V modifications, keep Music tab` (ec4cb21) ✅
+
+## 🎯 Status: ✅ PRODUCTION READY
+
+Tous les objectifs principaux sont atteints :
+1. ✅ Onglet Musique restauré
+2. ✅ Endpoints backend vérifiés
+3. ⏭️ A/V séparé (reporté à v4.1.6 pour cause de bug compilation)
+
+L'application est stable et prête pour le déploiement ! 🚀
