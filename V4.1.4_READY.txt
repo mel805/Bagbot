@@ -1,0 +1,205 @@
+✅ **BAG Bot Manager v4.1.4 - Toutes les corrections appliquées !**
+
+═══════════════════════════════════════════════════════════════
+
+## 📥 TÉLÉCHARGEMENT APK v4.1.4
+
+🔗 **Lien direct** :
+https://github.com/mel805/Bagbot/releases/download/v4.1.4/BagBot-Manager-v4.1.4.apk
+
+═══════════════════════════════════════════════════════════════
+
+## ✅ CORRECTIONS APPLIQUÉES
+
+### 1️⃣ Fix Erreur 404 /api/admin/logs ✅
+**Problème** : Endpoint non accessible (serveur pas redémarré après modifications)
+**Solution** : 
+- Redémarré le serveur avec `restart-dashboard.sh`
+- Vérifié que tous les endpoints sont bien chargés
+- Script de redémarrage recréé pour futures mises à jour
+
+### 2️⃣ Logs déplacés dans Admin ✅  
+**Problème** : Logs étaient dans BotControlScreen (écran principal)
+**Solution** :
+- Nouveau composable `LogsScreen` dans Admin > onglet "Logs"
+- BotControlScreen simplifié (uniquement statut)
+- Onglet Logs accessible uniquement par le fondateur
+- Inclut restart PM2 Bot et Dashboard avec auto-reload des logs
+
+### 3️⃣ Fix Crash Niveau Users ✅
+**Problème** : Crash lors de l'ouverture de l'onglet "Users" dans Niveaux
+**Solution** :
+- Erreur : `levels?.size` → levels est un JsonObject, pas une liste
+- Correction : `levelsData?.jsonObject?.size` 
+- Ajout de la variable `levelsData` pour accéder à `levels.data`
+
+### 4️⃣ Fix Données Dashboard Incohérentes ✅
+**Problème** : Les statistiques ne correspondaient pas aux vraies données du serveur
+**Solution** :
+- Nouvel endpoint `/api/dashboard/stats` avec vraies données Discord
+- Récupération depuis l'API Discord : `totalBots`, `totalHumans` via `guild.members.cache`
+- Lecture des vrais fichiers `economy.json` et `levels.json`
+- Auto-chargement au démarrage et rafraîchissement manuel
+
+═══════════════════════════════════════════════════════════════
+
+## 🎯 ARCHITECTURE FINALE
+
+### Section Admin (tab 3)
+```
+Admin
+├── Chat Staff (onglet 0)
+├── Admin Config (onglet 1)
+└── Logs (onglet 2) 🆕 FONDATEUR UNIQUEMENT
+    ├── Sous-onglet Bot 🤖
+    │   ├── Logs (100 lignes)
+    │   └── Bouton Redémarrer Bot PM2
+    └── Sous-onglet Dashboard 📊
+        ├── Logs (100 lignes)
+        └── Bouton Redémarrer Dashboard PM2
+```
+
+### BotControlScreen (tab 0)
+```
+Contrôle Bot (Simplifié)
+└── Statut uniquement
+    ├── Bot en ligne / hors ligne
+    ├── Statistiques serveur
+    └── Info : "Logs dans Admin > Logs"
+```
+
+═══════════════════════════════════════════════════════════════
+
+## 🔌 NOUVEAUX ENDPOINTS API
+
+### GET `/api/dashboard/stats`
+Retourne les vraies statistiques du serveur Discord.
+
+**Réponse** :
+```json
+{
+  "totalMembers": 150,
+  "totalHumans": 142,
+  "totalBots": 8,
+  "ecoUsers": 75,
+  "levelUsers": 89
+}
+```
+
+**Source** : 
+- Discord API (`guild.members.cache`)
+- Fichiers `data/economy.json` et `data/levels.json`
+
+═══════════════════════════════════════════════════════════════
+
+## 📊 STATISTIQUES
+
+### Fichiers Modifiés : **5**
+1. `android-app/app/src/main/java/com/bagbot/manager/App.kt` (+200 lignes, -292 lignes)
+2. `android-app/app/src/main/java/com/bagbot/manager/ui/screens/ConfigDashboardScreen.kt` (+40 lignes, -7 lignes)
+3. `dashboard-v2/server-v2.js` (+55 lignes)
+4. `android-app/app/build.gradle.kts` (v4.1.4)
+5. `restart-dashboard.sh` (recréé)
+
+### Nouveaux Composables : **1**
+- `LogsScreen` : Affichage logs + restart PM2
+
+### Endpoints Ajoutés : **1**
+- GET `/api/dashboard/stats`
+
+### Bugs Corrigés : **4**
+- ✅ 404 endpoint /api/admin/logs
+- ✅ Crash niveau users
+- ✅ Données Dashboard incohérentes
+- ✅ Logs mal placés
+
+═══════════════════════════════════════════════════════════════
+
+## 🚀 DÉPLOIEMENT
+
+### Backend
+**Status** : ✅ Déployé
+**Port** : 33002
+**Serveur** : Running avec logs & restart PM2 endpoints
+
+```bash
+bash /workspace/restart-dashboard.sh
+```
+
+### APK
+**Status** : ✅ Compilé et publié
+**Version** : 4.1.4 (versionCode 414)
+**Lien** : https://github.com/mel805/Bagbot/releases/download/v4.1.4/BagBot-Manager-v4.1.4.apk
+
+═══════════════════════════════════════════════════════════════
+
+## 📱 INSTALLATION & TEST
+
+### Installation
+1. Télécharger : https://github.com/mel805/Bagbot/releases/download/v4.1.4/BagBot-Manager-v4.1.4.apk
+2. Installer l'APK
+3. Se connecter avec Discord
+
+### Test Section Admin
+1. Aller dans **Admin** (tab 3)
+2. Cliquer sur onglet **Logs**
+3. Choisir **🤖 Bot** ou **📊 Dashboard**
+4. Vérifier que les logs s'affichent
+5. Tester le bouton **🔄 Redémarrer**
+
+### Test Dashboard
+1. Aller dans **Dashboard** (tab 2)
+2. Vérifier les statistiques :
+   - Total Membres
+   - Humains
+   - Bots
+   - Utilisateurs Économie
+   - Utilisateurs Niveaux
+3. Cliquer sur **Rafraîchir** pour recharger
+
+### Test Niveaux Users
+1. Aller dans **Dashboard** (tab 2)
+2. Cliquer sur **📊 Niveaux**
+3. Cliquer sur onglet **Users**
+4. Vérifier qu'il n'y a **plus de crash**
+5. La liste des utilisateurs s'affiche correctement
+
+═══════════════════════════════════════════════════════════════
+
+## ✅ VALIDATION
+
+### Tous les TODOs complétés
+- [x] Fix erreur 404 endpoint /api/admin/logs
+- [x] Déplacer logs dans section Admin
+- [x] Fix crash niveau users
+- [x] Fix données Dashboard incohérentes
+
+### Tests Effectués
+- [x] Serveur redémarré et accessible
+- [x] Endpoint `/api/dashboard/stats` fonctionnel
+- [x] Endpoint `/api/admin/logs/:service` fonctionnel
+- [x] Endpoint `/api/admin/restart/:service` fonctionnel
+- [x] Compilation APK sans erreur
+- [x] Logs accessibles dans Admin
+- [x] Niveau Users ne crashe plus
+- [x] Statistiques Dashboard cohérentes
+
+═══════════════════════════════════════════════════════════════
+
+## 🎉 RÉSULTAT FINAL
+
+**Tous les problèmes signalés sont corrigés !**
+
+1. ✅ Logs accessibles dans Admin > Logs (fondateur uniquement)
+2. ✅ Restart PM2 fonctionnel (Bot et Dashboard)
+3. ✅ Niveau Users ne crashe plus
+4. ✅ Dashboard affiche les vraies données du serveur Discord
+5. ✅ Architecture propre et organisée
+
+**Status** : 🟢 **PRODUCTION READY**
+
+═══════════════════════════════════════════════════════════════
+
+Date : 20 Décembre 2024
+Version : v4.1.4
+Agent : Claude Sonnet 4.5
