@@ -19,7 +19,14 @@ class ApiClient(private val store: SettingsStore) {
             .build()
         
         val response = client.newCall(request).execute()
-        if (!response.isSuccessful) throw IOException("HTTP ${response.code}: ${response.body?.string()}")
+        if (!response.isSuccessful) {
+            val errorBody = response.body?.string() ?: ""
+            // Si token invalide, effacer le token
+            if (response.code == 401 && errorBody.contains("Invalid or expired token")) {
+                store.clearToken()
+            }
+            throw IOException("HTTP ${response.code}: $errorBody")
+        }
         return response.body?.string() ?: "{}"
     }
     

@@ -2435,18 +2435,19 @@ app.get('/api/dashboard/stats', async (req, res) => {
 
 // GET /api/admin/sessions - Liste des membres connectés avec leurs rôles
 app.get('/api/admin/sessions', (req, res) => {
-  // Authentification
+  // Authentification (utiliser appTokens au lieu de activeSessions)
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
   const token = auth.slice(7);
-  if (!activeSessions.has(token)) {
+  const userData = appTokens.get('token_' + token);
+  if (!userData) {
     return res.status(401).json({ error: 'Invalid or expired token' });
   }
   
-  const requestingUserId = activeSessions.get(token);
+  const requestingUserId = userData.userId;
   
   // Vérifier que c'est le fondateur ou un admin
   if (requestingUserId !== FOUNDER_ID) {
@@ -2467,13 +2468,17 @@ app.get('/api/admin/sessions', (req, res) => {
     }
   }
   
-  // Récupérer toutes les sessions actives
+  // Récupérer toutes les sessions actives depuis appTokens
   const guild = client.guilds.cache.get(GUILD);
   const sessions = [];
   
-  for (const [sessionToken, userId] of activeSessions) {
+  // Parcourir appTokens au lieu de activeSessions
+  for (const [key, userData] of appTokens) {
+    if (!key.startsWith('token_')) continue; // Skip les autres clés
+    
+    const userId = userData.userId;
     const member = guild ? guild.members.cache.get(userId) : null;
-    const username = member ? member.user.username : 'Inconnu';
+    const username = userData.username || (member ? member.user.username : 'Inconnu');
     
     // Déterminer le rôle
     let role = 'Membre';
