@@ -602,7 +602,7 @@ private fun EconomyConfigTab(
     snackbar: SnackbarHostState
 ) {
     var selectedSubTab by remember { mutableIntStateOf(0) }
-    val subTabs = listOf("Settings", "Actions", "Users", "Boutique", "Karma")
+    val subTabs = listOf("Settings", "Actions", "Users", "Boutique", "Karma", "Suites")
     
     val eco = configData?.obj("economy")
     val settings = eco?.obj("settings")
@@ -1122,6 +1122,126 @@ private fun EconomyConfigTab(
                                 Icon(Icons.Default.Save, null)
                                 Spacer(Modifier.width(8.dp))
                                 Text("Sauvegarder Karma")
+                            }
+                        }
+                    }
+                }
+            }
+            5 -> {
+                // Suites - Gestion des suites couple
+                val suitesData = eco?.obj("suites")
+                var dayPrice by remember { mutableStateOf(suitesData?.obj("prices")?.int("day") ?: 500) }
+                var weekPrice by remember { mutableStateOf(suitesData?.obj("prices")?.int("week") ?: 2500) }
+                var monthPrice by remember { mutableStateOf(suitesData?.obj("prices")?.int("month") ?: 10000) }
+                var categoryId by remember { mutableStateOf(suitesData?.str("categoryId") ?: "") }
+                var suiteEmoji by remember { mutableStateOf(suitesData?.str("emoji") ?: "💞") }
+                var savingSuites by remember { mutableStateOf(false) }
+                
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    item {
+                        Text(
+                            "💞 Suites Couple",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            "Configuration des prix et catégorie",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.Gray
+                        )
+                    }
+                    
+                    item {
+                        SectionCard(title = "💰 Tarifs", subtitle = "Prix par durée") {
+                            OutlinedTextField(
+                                value = dayPrice.toString(),
+                                onValueChange = { dayPrice = it.toIntOrNull() ?: dayPrice },
+                                label = { Text("Prix 1 jour") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = weekPrice.toString(),
+                                onValueChange = { weekPrice = it.toIntOrNull() ?: weekPrice },
+                                label = { Text("Prix 1 semaine") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = monthPrice.toString(),
+                                onValueChange = { monthPrice = it.toIntOrNull() ?: monthPrice },
+                                label = { Text("Prix 1 mois") },
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
+                    
+                    item {
+                        SectionCard(title = "⚙️ Configuration") {
+                            OutlinedTextField(
+                                value = categoryId,
+                                onValueChange = { categoryId = it },
+                                label = { Text("ID Catégorie Discord") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = suiteEmoji,
+                                onValueChange = { suiteEmoji = it },
+                                label = { Text("Emoji") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    
+                    item {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    savingSuites = true
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            val body = buildJsonObject {
+                                                put("suites", buildJsonObject {
+                                                    put("prices", buildJsonObject {
+                                                        put("day", dayPrice)
+                                                        put("week", weekPrice)
+                                                        put("month", monthPrice)
+                                                    })
+                                                    put("categoryId", categoryId)
+                                                    put("emoji", suiteEmoji)
+                                                    put("durations", buildJsonObject {
+                                                        put("day", 1)
+                                                        put("week", 7)
+                                                        put("month", 30)
+                                                    })
+                                                })
+                                            }
+                                            api.postJson("/api/economy", json.encodeToString(JsonObject.serializer(), body))
+                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Suites sauvegardées") }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
+                                        } finally {
+                                            withContext(Dispatchers.Main) { savingSuites = false }
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().height(52.dp),
+                            enabled = !savingSuites
+                        ) {
+                            if (savingSuites) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White)
+                            else {
+                                Icon(Icons.Default.Save, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Sauvegarder Suites")
                             }
                         }
                     }
