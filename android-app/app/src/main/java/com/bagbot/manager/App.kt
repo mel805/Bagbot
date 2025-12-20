@@ -2596,6 +2596,41 @@ fun ConfigGroupsScreen(
 // AFFICHAGE DES VRAIS NOMS (v2.1.5)
 // ============================================
 
+fun getSectionIcon(sectionKey: String): androidx.compose.ui.graphics.vector.ImageVector {
+    return when (sectionKey) {
+        "welcome" -> Icons.Default.EmojiPeople
+        "goodbye" -> Icons.Default.DirectionsWalk
+        "logs" -> Icons.Default.Description
+        "autokick" -> Icons.Default.PersonRemove
+        "inactivity" -> Icons.Default.Bedtime
+        "staffRoleIds" -> Icons.Default.Shield
+        "quarantineRoleId" -> Icons.Default.Lock
+        "economy" -> Icons.Default.AttachMoney
+        "levels" -> Icons.Default.TrendingUp
+        "truthdare" -> Icons.Default.QuestionAnswer
+        "tickets" -> Icons.Default.ConfirmationNumber
+        "confess" -> Icons.Default.ChatBubble
+        "counting" -> Icons.Default.Numbers
+        "disboard" -> Icons.Default.Verified
+        "autothread" -> Icons.Default.Forum
+        "categoryBanners" -> Icons.Default.Image
+        "footerLogoUrl" -> Icons.Default.Photo
+        "geo" -> Icons.Default.LocationOn
+        else -> Icons.Default.Settings
+    }
+}
+
+fun getSectionColor(sectionKey: String): Color {
+    return when (sectionKey) {
+        "welcome", "goodbye" -> Color(0xFF4CAF50)
+        "logs", "autokick", "inactivity", "staffRoleIds", "quarantineRoleId" -> Color(0xFFE53935)
+        "economy", "levels", "truthdare" -> Color(0xFF9C27B0)
+        "tickets", "confess", "counting", "disboard", "autothread" -> Color(0xFF2196F3)
+        "categoryBanners", "footerLogoUrl", "geo" -> Color(0xFFFF9800)
+        else -> Color.Gray
+    }
+}
+
 @Composable
 fun renderKeyInfo(
     sectionKey: String,
@@ -2776,17 +2811,36 @@ fun ConfigGroupDetailScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
-                                Text(
-                                    getSectionDisplayName(sectionKey),
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Text(
-                                    if (isExpanded) "Cliquez pour masquer" else "Cliquez pour afficher",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier
+                                        .size(40.dp)
+                                        .background(
+                                            getSectionColor(sectionKey).copy(alpha = 0.2f), 
+                                            RoundedCornerShape(8.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        getSectionIcon(sectionKey),
+                                        null,
+                                        tint = getSectionColor(sectionKey),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        getSectionDisplayName(sectionKey),
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        if (isExpanded) "Cliquez pour masquer" else "Cliquez pour afficher",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
                             }
                             Icon(
                                 if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
