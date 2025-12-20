@@ -1102,6 +1102,53 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 roles = roles,
                                 isFounder = isFounder
                             )
+                            
+                            // DEBUG CARD en bas
+                            if (userId.isNotEmpty()) {
+                                LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
+                                    item { Spacer(Modifier.height(500.dp)) }
+                                    item {
+                                        Card(
+                                            Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFF5722))
+                                        ) {
+                                            Column(Modifier.padding(16.dp)) {
+                                                Text(
+                                                    "🔍 DEBUG - Détection Fondateur",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                                Spacer(Modifier.height(8.dp))
+                                                Text("Votre userId: $userId", color = Color.White, style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                                                Text("isFounder: $isFounder", color = if (isFounder) Color.Green else Color.Red, fontWeight = FontWeight.Bold)
+                                                Text("isAdmin: $isAdmin", color = if (isAdmin) Color.Green else Color.Red)
+                                                Spacer(Modifier.height(8.dp))
+                                                Button(
+                                                    onClick = {
+                                                        scope.launch {
+                                                            withContext(Dispatchers.IO) {
+                                                                try {
+                                                                    val debugJson = api.getJson("/api/debug/me")
+                                                                    withContext(Dispatchers.Main) {
+                                                                        snackbar.showSnackbar("Debug: $debugJson")
+                                                                    }
+                                                                } catch (e: Exception) {
+                                                                    withContext(Dispatchers.Main) {
+                                                                        snackbar.showSnackbar("Erreur debug: ${e.message}")
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    },
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Text("🔍 Tester /api/debug/me")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                         tab == 1 -> {
                             AppConfigScreen(

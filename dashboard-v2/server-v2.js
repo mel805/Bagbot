@@ -2325,6 +2325,35 @@ app.put('/api/configs/:section', express.json(), (req, res) => {
   }
 });
 
+// DEBUG: Endpoint pour afficher les infos de l'utilisateur connecté
+app.get('/api/debug/me', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.json({ error: 'No token', authenticated: false });
+  }
+  
+  const token = authHeader.substring(7);
+  const userData = appTokens.get('token_' + token);
+  
+  if (!userData) {
+    return res.json({ error: 'Invalid token', authenticated: false });
+  }
+  
+  const configs = readConfigs();
+  const staffRoleIds = configs.staffRoleIds || [];
+  
+  res.json({
+    authenticated: true,
+    userId: userData.userId,
+    username: userData.username,
+    isFounder: userData.userId === FOUNDER_ID,
+    isFounderCheck: `${userData.userId} === ${FOUNDER_ID}`,
+    configuredFounderId: FOUNDER_ID,
+    staffRoleIds: staffRoleIds,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // GET /api/music/uploads - Liste des fichiers musique uploadés
 app.get('/api/music/uploads', (req, res) => {
   try {
