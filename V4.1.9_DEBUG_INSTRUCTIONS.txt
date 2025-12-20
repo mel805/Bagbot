@@ -1,0 +1,78 @@
+# 🔍 v4.1.9-debug - VERSION DEBUG
+
+## 🎯 Objectif
+
+Identifier **VOTRE VRAI userId** pour corriger définitivement la détection du fondateur.
+
+---
+
+## 🔧 Nouveautés
+
+### 1. Endpoint `/api/debug/me`
+Retourne toutes les infos de détection :
+```json
+{
+  "authenticated": true,
+  "userId": "VOTRE_VRAI_ID",
+  "username": "VOTRE_USERNAME",
+  "isFounder": false,
+  "isFounderCheck": "VOTRE_ID === 661256714779426859",
+  "configuredFounderId": "661256714779426859",
+  "staffRoleIds": [...]
+}
+```
+
+### 2. Card Debug sur la page d'accueil
+
+En bas de la page d'accueil, une **card rouge "DEBUG"** affiche :
+- ✅ Votre `userId` actuel
+- ✅ `isFounder` : true/false (vert/rouge)
+- ✅ `isAdmin` : true/false
+- 🔍 Bouton **"Tester /api/debug/me"**
+
+---
+
+## 📋 Instructions
+
+1. **Installez v4.1.9-debug**
+   Lien : https://github.com/mel805/Bagbot/releases/tag/v4.1.9-debug
+
+2. **Scrollez en bas de la page d'accueil**
+   Vous verrez une card rouge "🔍 DEBUG"
+
+3. **Notez votre userId**
+   La card affiche : `Votre userId: XXXXXXXXXX`
+
+4. **Cliquez sur "🔍 Tester /api/debug/me"**
+   Un snackbar s'affichera avec toutes les infos
+
+5. **Envoyez-moi ces infos** :
+   - Votre `userId` affiché
+   - Ce que dit `isFounder` (true ou false)
+   - Le message du snackbar après le clic
+
+---
+
+## 🎯 Ce qu'on va faire ensuite
+
+Une fois qu'on aura votre **VRAI userId**, je vais :
+1. Le mettre dans `.env` : `FOUNDER_ID=VOTRE_VRAI_ID`
+2. Le mettre dans `App.kt`
+3. Recompiler → Vous serez détecté comme fondateur ✅
+
+---
+
+## ⚠️ Pourquoi ça ne marchait pas ?
+
+J'ai mis `661256714779426859` mais c'était peut-être :
+- Pas le bon compte Discord
+- Pas le bon serveur
+- Un ID de test
+
+Avec le debug, on va avoir le **VRAI** ID et tout va marcher !
+
+---
+
+**Télécharger** : https://github.com/mel805/Bagbot/releases/tag/v4.1.9-debug
+
+Scrollez en bas, regardez la card rouge, et dites-moi ce qu'elle affiche ! 🔍
