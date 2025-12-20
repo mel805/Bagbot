@@ -517,6 +517,9 @@ app.post('/api/staff/chat/send', express.json(), (req, res) => {
 // Route pour servir les GIFs hébergés localement
 app.use('/gifs', express.static(path.join(__dirname, 'public/gifs')));
 
+// Route pour servir les fichiers audio uploadés
+app.use('/uploads', express.static(path.join(__dirname, '../data/uploads')));
+
 app.use(express.static('.'));
 
 
