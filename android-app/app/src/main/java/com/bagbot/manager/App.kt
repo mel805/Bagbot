@@ -803,7 +803,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     withContext(Dispatchers.Main) {
                         userId = me["userId"]?.jsonPrimitive?.contentOrNull ?: ""
                         userName = me["username"]?.jsonPrimitive?.contentOrNull ?: ""
-                        isFounder = userId == "661256714779426859"  // Votre vrai ID
+                        isFounder = userId == "943487722738311219"  // Votre vrai ID
                     }
                     Log.d(TAG, "User loaded: $userName ($userId)")
                 } catch (e: Exception) {
@@ -1284,7 +1284,7 @@ fun BotControlScreen(
                 val me = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.parseToJsonElement(meJson).jsonObject
                 val userId = me["userId"]?.jsonPrimitive?.contentOrNull ?: ""
                 localUserId = userId
-                localIsFounder = userId == "661256714779426859"
+                localIsFounder = userId == "943487722738311219"
                 
                 withContext(Dispatchers.Main) {
                     debugInfo = "UserId: $userId"
