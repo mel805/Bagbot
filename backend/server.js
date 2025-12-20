@@ -2475,6 +2475,48 @@ app.post('/api/admin/allowed-users/remove', express.json(), (req, res) => {
   res.json({ success: true, allowedUsers: Array.from(allowedUsers) });
 });
 
+// GET /api/admin/sessions - Récupérer les sessions actives
+app.get('/api/admin/sessions', (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token' });
+  }
+  
+  const token = authHeader.substring(7);
+  const userData = appTokens.get('token_' + token);
+  
+  if (!userData || userData.userId !== '943487722738311219') {
+    return res.status(403).json({ error: 'Forbidden - Admin only' });
+  }
+  
+  try {
+    const sessions = [];
+    const now = Date.now();
+    
+    // Parcourir toutes les sessions actives
+    for (const [key, value] of appTokens.entries()) {
+      if (key.startsWith('token_')) {
+        const isExpired = (now - value.timestamp) > (24 * 60 * 60 * 1000);
+        if (!isExpired) {
+          sessions.push({
+            userId: value.userId,
+            username: value.username,
+            discriminator: value.discriminator,
+            avatar: value.avatar,
+            timestamp: value.timestamp,
+            lastSeen: new Date(value.timestamp).toISOString()
+          });
+        }
+      }
+    }
+    
+    res.json({ sessions });
+  } catch (error) {
+    console.error('[/api/admin/sessions] Error:', error);
+    res.status(500).json({ error: 'Failed to fetch sessions' });
+  }
+});
+
 // DELETE /api/admin/allowed-users/:userId - Retirer un utilisateur
 app.delete('/api/admin/allowed-users/:userId', (req, res) => {
   const authHeader = req.headers['authorization'];

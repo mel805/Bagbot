@@ -4,6 +4,8 @@ package com.bagbot.manager
 
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1711,6 +1713,118 @@ fun UploadsTab(
     isLoading: Boolean,
     onRefresh: () -> Unit
 ) {
+    val context = LocalContext.current
+    var isUploading by remember { mutableStateOf(false) }
+    var currentlyPlaying by remember { mutableStateOf<String?>(null) }
+    var mediaPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
+    
+    // File picker launcher
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                isUploading = true
+                withContext(Dispatchers.IO) {
+                    try {
+                        val contentResolver = context.contentResolver
+                        val inputStream = contentResolver.openInputStream(uri)
+                        if (inputStream == null) {
+                            withContext(Dispatchers.Main) {
+                                snackbar.showSnackbar("❌ Impossible de lire le fichier")
+                                isUploading = false
+                            }
+                            return@withContext
+                        }
+                        
+                        // Obtenir le nom du fichier
+                        val cursor = contentResolver.query(uri, null, null, null, null)
+                        var filename = "audio_${System.currentTimeMillis()}.mp3"
+                        cursor?.use {
+                            if (it.moveToFirst()) {
+                                val nameIndex = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                if (nameIndex >= 0) {
+                                    filename = it.getString(nameIndex)
+                                }
+                            }
+                        }
+                        
+                        // Upload vers le serveur
+                        val bytes = inputStream.readBytes()
+                        inputStream.close()
+                        
+                        api.uploadFile("/api/music/upload", filename, bytes)
+                        
+                        withContext(Dispatchers.Main) {
+                            snackbar.showSnackbar("✅ Fichier uploadé: $filename")
+                            isUploading = false
+                            onRefresh()
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                            isUploading = false
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Permission launcher pour Android 13+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            filePickerLauncher.launch("audio/*")
+        } else {
+            scope.launch {
+                snackbar.showSnackbar("❌ Permission refusée")
+            }
+        }
+    }
+    
+    fun playAudio(filename: String) {
+        try {
+            // Stop le lecteur actuel
+            mediaPlayer?.release()
+            
+            // Créer un nouveau lecteur
+            val baseUrl = api.baseUrl.removeSuffix("/")
+            val audioUrl = "$baseUrl/uploads/$filename"
+            
+            mediaPlayer = android.media.MediaPlayer().apply {
+                setDataSource(audioUrl)
+                setOnPreparedListener {
+                    it.start()
+                    currentlyPlaying = filename
+                }
+                setOnCompletionListener {
+                    currentlyPlaying = null
+                    it.release()
+                }
+                setOnErrorListener { _, _, _ ->
+                    scope.launch {
+                        snackbar.showSnackbar("❌ Erreur de lecture")
+                    }
+                    currentlyPlaying = null
+                    true
+                }
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            scope.launch {
+                snackbar.showSnackbar("❌ Erreur: ${e.message}")
+            }
+        }
+    }
+    
+    fun stopAudio() {
+        mediaPlayer?.release()
+        mediaPlayer = null
+        currentlyPlaying = null
+    }
+    
     LazyColumn(
         Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1747,30 +1861,41 @@ fun UploadsTab(
                             )
                         }
                     }
-                    IconButton(onClick = onRefresh, enabled = !isLoading) {
+                    IconButton(onClick = onRefresh, enabled = !isLoading && !isUploading) {
                         Icon(Icons.Default.Refresh, "Recharger", tint = Color.White)
                     }
                 }
             }
         }
         
+        // Bouton Upload
         item {
-            Card(
+            Button(
+                onClick = {
+                    // Vérifier et demander la permission
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        permissionLauncher.launch(android.Manifest.permission.READ_MEDIA_AUDIO)
+                    } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                        permissionLauncher.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    } else {
+                        filePickerLauncher.launch("audio/*")
+                    }
+                },
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFA726))
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50)),
+                enabled = !isUploading && !isLoading
             ) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(
-                        "ℹ️ Information",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
+                if (isUploading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "L'upload de fichiers depuis l'application mobile n'est pas encore disponible. Utilisez le dashboard web pour uploader des fichiers audio.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White
-                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Upload en cours...")
+                } else {
+                    Icon(Icons.Default.Upload, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("📤 Uploader un fichier audio")
                 }
             }
         }
@@ -1788,11 +1913,20 @@ fun UploadsTab(
                         modifier = Modifier.fillMaxWidth().padding(40.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            "Aucun fichier",
-                            color = Color.Gray,
-                            textAlign = TextAlign.Center
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.AudioFile,
+                                null,
+                                tint = Color.Gray,
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "Aucun fichier",
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }
@@ -1800,24 +1934,31 @@ fun UploadsTab(
         
         if (!isLoading && uploads.isNotEmpty()) {
             items(uploads) { upload ->
+                val isPlaying = currentlyPlaying == upload.filename
+                
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isPlaying) Color(0xFF4CAF50) else Color(0xFF1E1E1E)
+                    )
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Icon(
-                                Icons.Default.AudioFile,
+                                if (isPlaying) Icons.Default.PlayArrow else Icons.Default.AudioFile,
                                 null,
-                                tint = Color(0xFF2196F3),
+                                tint = if (isPlaying) Color.White else Color(0xFF2196F3),
                                 modifier = Modifier.size(24.dp)
                             )
                             Spacer(Modifier.width(12.dp))
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     upload.filename,
                                     fontWeight = FontWeight.Bold,
@@ -1825,41 +1966,77 @@ fun UploadsTab(
                                     maxLines = 1
                                 )
                                 Text(
-                                    "${upload.size / 1024 / 1024} MB",
+                                    String.format("%.2f MB", upload.size / 1024.0 / 1024.0),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.Gray
+                                    color = if (isPlaying) Color(0xFFE0E0E0) else Color.Gray
                                 )
+                                if (isPlaying) {
+                                    Text(
+                                        "🎵 En lecture...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                         
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        try {
-                                            api.deleteJson("/api/music/upload/${upload.filename}")
-                                            withContext(Dispatchers.Main) {
-                                                snackbar.showSnackbar("✅ Fichier supprimé")
-                                                onRefresh()
-                                            }
-                                        } catch (e: Exception) {
-                                            withContext(Dispatchers.Main) {
-                                                snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                        Row {
+                            // Bouton Play/Stop
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) {
+                                        stopAudio()
+                                    } else {
+                                        playAudio(upload.filename)
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                    if (isPlaying) "Stop" else "Lire",
+                                    tint = if (isPlaying) Color.White else Color(0xFF4CAF50)
+                                )
+                            }
+                            
+                            // Bouton Delete
+                            IconButton(
+                                onClick = {
+                                    if (isPlaying) stopAudio()
+                                    scope.launch {
+                                        withContext(Dispatchers.IO) {
+                                            try {
+                                                api.deleteJson("/api/music/upload/${upload.filename}")
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("✅ Fichier supprimé")
+                                                    onRefresh()
+                                                }
+                                            } catch (e: Exception) {
+                                                withContext(Dispatchers.Main) {
+                                                    snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                                }
                                             }
                                         }
                                     }
                                 }
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    "Supprimer",
+                                    tint = Color(0xFFE53935)
+                                )
                             }
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                "Supprimer",
-                                tint = Color(0xFFE53935)
-                            )
                         }
                     }
                 }
             }
+        }
+    }
+    
+    // Cleanup when leaving
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer?.release()
         }
     }
 }
