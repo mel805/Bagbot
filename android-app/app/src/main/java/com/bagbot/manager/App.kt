@@ -634,6 +634,214 @@ fun StaffChatScreen(
 // Remplacer le StaffMainScreen existant par celui-ci:
 
 @Composable
+fun StaffConnectedUsersScreen(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+    members: Map<String, String>,
+    memberRoles: Map<String, List<String>>,
+    configData: JsonObject?
+) {
+    var sessions by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var staffRoleIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var founderIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    
+    fun loadSessions() {
+        scope.launch {
+            isLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    // Charger les sessions
+                    val resp = api.getJson("/api/admin/sessions")
+                    val obj = json.parseToJsonElement(resp).jsonObject
+                    val sessionsList = obj["sessions"]?.jsonArray?.mapNotNull { it.jsonObject } ?: emptyList()
+                    
+                    // Charger la config pour les rôles staff
+                    val staffRoles = configData?.get("staffRoleIds")?.jsonArray?.mapNotNull { 
+                        it.jsonPrimitive.contentOrNull 
+                    } ?: emptyList()
+                    
+                    // Fondateurs
+                    val founders = listOf("943487722738311219")
+                    
+                    withContext(Dispatchers.Main) {
+                        sessions = sessionsList
+                        staffRoleIds = staffRoles
+                        founderIds = founders
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) { isLoading = false }
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) { loadSessions() }
+    
+    LazyColumn(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF5865F2))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.People,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                "👥 Utilisateurs Connectés au Chat Staff",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${sessions.size} utilisateur(s) en ligne",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFBBDEFB)
+                            )
+                        }
+                    }
+                    IconButton(onClick = { loadSessions() }, enabled = !isLoading) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Recharger", tint = Color.White)
+                    }
+                }
+            }
+        }
+        
+        if (isLoading) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF5865F2))
+                }
+            }
+        } else if (sessions.isEmpty()) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Default.People,
+                                contentDescription = null,
+                                tint = Color.Gray.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "Aucune session active",
+                                color = Color.Gray,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (!isLoading && sessions.isNotEmpty()) {
+            items(sessions) { session ->
+                val userId = session["userId"]?.jsonPrimitive?.contentOrNull ?: ""
+                val userRolesList = session["roles"]?.jsonArray?.mapNotNull { 
+                    it.jsonPrimitive.contentOrNull 
+                } ?: emptyList()
+                val lastSeen = session["lastSeen"]?.jsonPrimitive?.contentOrNull ?: ""
+                val isOnline = session["isOnline"]?.jsonPrimitive?.booleanOrNull ?: false
+                
+                // Déterminer le rôle
+                val role = when {
+                    userId in founderIds -> "👑 Fondateur"
+                    userRolesList.any { it in staffRoleIds } -> "⚡ Admin"
+                    else -> "👤 Membre"
+                }
+                
+                val roleColor = when {
+                    userId in founderIds -> Color(0xFFFFD700)
+                    userRolesList.any { it in staffRoleIds } -> Color(0xFF5865F2)
+                    else -> Color.Gray
+                }
+                
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isOnline) Color(0xFF1E1E1E) else Color(0xFF1E1E1E).copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(
+                                        if (isOnline) Color(0xFF57F287) 
+                                        else Color.Gray,
+                                        shape = androidx.compose.foundation.shape.CircleShape
+                                    )
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    members[userId] ?: "Utilisateur inconnu",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "ID: ${userId.takeLast(8)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    role,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = roleColor,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (lastSeen.isNotBlank()) {
+                                    Text(
+                                        "Vu: $lastSeen",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun StaffMainScreen(
     api: ApiClient,
     json: Json,
@@ -697,6 +905,13 @@ fun StaffMainScreen(
             })
             Tab(selected = selectedStaffTab == 1, onClick = { selectedStaffTab = 1 }, text = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.People, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Connectés")
+                }
+            })
+            Tab(selected = selectedStaffTab == 2, onClick = { selectedStaffTab = 2 }, text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.AdminPanelSettings, null, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("Admin")
@@ -705,7 +920,8 @@ fun StaffMainScreen(
         }
         when (selectedStaffTab) {
             0 -> StaffChatScreen(api, json, scope, snackbar, members, userInfo)
-            1 -> AdminScreenWithAccess(members, memberRoles, configData, api, json, scope, snackbar, isFounder)
+            1 -> StaffConnectedUsersScreen(api, json, scope, snackbar, members, memberRoles, configData)
+            2 -> AdminScreenWithAccess(members, memberRoles, configData, api, json, scope, snackbar, isFounder)
         }
     }
 }
@@ -1016,10 +1232,18 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 icon = { Icon(Icons.Default.Settings, "Config") },
                                 label = { Text("Config") }
                             )
-                            if (isFounder) {
+                            if (isAdmin || isFounder) {
                                 NavigationBarItem(
                                     selected = tab == 3,
                                     onClick = { tab = 3 },
+                                    icon = { Icon(Icons.Default.MusicNote, "Musique") },
+                                    label = { Text("Musique") }
+                                )
+                            }
+                            if (isFounder) {
+                                NavigationBarItem(
+                                    selected = tab == 4,
+                                    onClick = { tab = 4 },
                                     icon = { Icon(Icons.Default.Security, "Admin") },
                                     label = { Text("Admin") }
                                 )
@@ -1144,7 +1368,15 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 }
                             )
                         }
-                        tab == 3 && isFounder -> {
+                        tab == 3 && (isAdmin || isFounder) -> {
+                            MusicScreen(
+                                api = api,
+                                json = json,
+                                scope = scope,
+                                snackbar = snackbar
+                            )
+                        }
+                        tab == 4 && isFounder -> {
                             StaffMainScreen(
                                 api = api,
                                 json = json,
@@ -1166,6 +1398,471 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
 }
 
 // Partie 2 - Composables principaux
+
+@Composable
+fun MusicScreen(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    var playlists by remember { mutableStateOf<List<MusicPlaylist>>(emptyList()) }
+    var uploads by remember { mutableStateOf<List<MusicUpload>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    fun loadMusicData() {
+        scope.launch {
+            isLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val response = api.getJson("/api/music")
+                    val data = json.parseToJsonElement(response).jsonObject
+                    
+                    withContext(Dispatchers.Main) {
+                        playlists = data["playlists"]?.jsonArray?.mapNotNull {
+                            val obj = it.jsonObject
+                            MusicPlaylist(
+                                name = obj["name"]?.jsonPrimitive?.contentOrNull ?: "",
+                                guildId = obj["guildId"]?.jsonPrimitive?.contentOrNull ?: "",
+                                trackCount = obj["trackCount"]?.jsonPrimitive?.intOrNull ?: 0,
+                                updatedAt = obj["updatedAt"]?.jsonPrimitive?.longOrNull ?: 0L
+                            )
+                        } ?: emptyList()
+                        
+                        uploads = data["uploads"]?.jsonArray?.mapNotNull {
+                            val obj = it.jsonObject
+                            MusicUpload(
+                                filename = obj["filename"]?.jsonPrimitive?.contentOrNull ?: "",
+                                size = obj["size"]?.jsonPrimitive?.longOrNull ?: 0L
+                            )
+                        } ?: emptyList()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) { loadMusicData() }
+    
+    Column(Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF1E1E1E)) {
+            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.QueueMusic, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Playlists")
+                }
+            })
+            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Upload, null, modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Fichiers")
+                }
+            })
+        }
+        
+        when (selectedTab) {
+            0 -> PlaylistsTab(api, json, scope, snackbar, playlists, isLoading) { loadMusicData() }
+            1 -> UploadsTab(api, json, scope, snackbar, uploads, isLoading) { loadMusicData() }
+        }
+    }
+}
+
+data class MusicPlaylist(
+    val name: String,
+    val guildId: String,
+    val trackCount: Int,
+    val updatedAt: Long
+)
+
+data class MusicUpload(
+    val filename: String,
+    val size: Long
+)
+
+@Composable
+fun PlaylistsTab(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+    playlists: List<MusicPlaylist>,
+    isLoading: Boolean,
+    onRefresh: () -> Unit
+) {
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var newPlaylistName by remember { mutableStateOf("") }
+    
+    if (showCreateDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateDialog = false },
+            title = { Text("Créer une playlist") },
+            text = {
+                Column {
+                    Text("Entrez le nom de la nouvelle playlist")
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = newPlaylistName,
+                        onValueChange = { newPlaylistName = it },
+                        label = { Text("Nom de la playlist") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val body = buildJsonObject {
+                                        put("guildId", "GUILD_ID") // À remplacer dynamiquement
+                                        put("name", newPlaylistName.trim())
+                                    }
+                                    api.postJson("/api/music/playlist/create", body.toString())
+                                    withContext(Dispatchers.Main) {
+                                        snackbar.showSnackbar("✅ Playlist créée")
+                                        showCreateDialog = false
+                                        newPlaylistName = ""
+                                        onRefresh()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) {
+                                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    enabled = newPlaylistName.isNotBlank()
+                ) {
+                    Text("Créer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
+    
+    LazyColumn(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.QueueMusic,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                "🎵 Playlists Musicales",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${playlists.size} playlist(s)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFE1BEE7)
+                            )
+                        }
+                    }
+                    IconButton(onClick = onRefresh, enabled = !isLoading) {
+                        Icon(Icons.Default.Refresh, "Recharger", tint = Color.White)
+                    }
+                }
+            }
+        }
+        
+        item {
+            Button(
+                onClick = { showCreateDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+            ) {
+                Icon(Icons.Default.Add, null)
+                Spacer(Modifier.width(8.dp))
+                Text("Créer une playlist")
+            }
+        }
+        
+        if (isLoading) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF9C27B0))
+                }
+            }
+        } else if (playlists.isEmpty()) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Aucune playlist",
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (!isLoading && playlists.isNotEmpty()) {
+            items(playlists) { playlist ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.MusicNote,
+                                null,
+                                tint = Color(0xFF9C27B0),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    playlist.name,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    "${playlist.trackCount} titre(s)",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                        
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            api.deleteJson("/api/music/playlist/${playlist.guildId}/${playlist.name}")
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("✅ Playlist supprimée")
+                                                onRefresh()
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                "Supprimer",
+                                tint = Color(0xFFE53935)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UploadsTab(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+    uploads: List<MusicUpload>,
+    isLoading: Boolean,
+    onRefresh: () -> Unit
+) {
+    LazyColumn(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.AudioFile,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                "📂 Fichiers Uploadés",
+                                style = MaterialTheme.typography.headlineSmall,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                "${uploads.size} fichier(s)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFBBDEFB)
+                            )
+                        }
+                    }
+                    IconButton(onClick = onRefresh, enabled = !isLoading) {
+                        Icon(Icons.Default.Refresh, "Recharger", tint = Color.White)
+                    }
+                }
+            }
+        }
+        
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFA726))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text(
+                        "ℹ️ Information",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "L'upload de fichiers depuis l'application mobile n'est pas encore disponible. Utilisez le dashboard web pour uploader des fichiers audio.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+        
+        if (isLoading) {
+            item {
+                Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF2196F3))
+                }
+            }
+        } else if (uploads.isEmpty()) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().padding(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "Aucun fichier",
+                            color = Color.Gray,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+        }
+        
+        if (!isLoading && uploads.isNotEmpty()) {
+            items(uploads) { upload ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.AudioFile,
+                                null,
+                                tint = Color(0xFF2196F3),
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    upload.filename,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    "${upload.size / 1024 / 1024} MB",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.Gray
+                                )
+                            }
+                        }
+                        
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            api.deleteJson("/api/music/upload/${upload.filename}")
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("✅ Fichier supprimé")
+                                                onRefresh()
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                "Supprimer",
+                                tint = Color(0xFFE53935)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun LoginScreen(
