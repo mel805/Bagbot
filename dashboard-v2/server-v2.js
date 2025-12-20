@@ -2320,6 +2320,27 @@ app.put('/api/configs/:section', express.json(), (req, res) => {
   }
 });
 
+// GET /api/music/uploads - Liste des fichiers musique uploadés
+app.get('/api/music/uploads', (req, res) => {
+  try {
+    const uploadsDir = path.join(process.cwd(), 'data', 'uploads');
+    
+    if (!fs.existsSync(uploadsDir)) {
+      return res.json({ files: [] });
+    }
+    
+    const files = fs.readdirSync(uploadsDir).filter(file => {
+      const ext = path.extname(file).toLowerCase();
+      return ['.mp3', '.wav', '.m4a', '.ogg', '.flac'].includes(ext);
+    });
+    
+    res.json({ files });
+  } catch (error) {
+    console.error('Error in /api/music/uploads:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/dashboard/stats - Statistiques complètes du serveur
 app.get('/api/dashboard/stats', async (req, res) => {
   try {

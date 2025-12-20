@@ -1026,6 +1026,12 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 icon = { Icon(Icons.Default.Settings, "Config") },
                                 label = { Text("Config") }
                             )
+                            NavigationBarItem(
+                                selected = tab == 4,
+                                onClick = { tab = 4 },
+                                icon = { Icon(Icons.Default.MusicNote, "Musique") },
+                                label = { Text("Musique") }
+                            )
                             if (isFounder) {
                                 NavigationBarItem(
                                     selected = tab == 3,
@@ -1150,6 +1156,14 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                         }
                                     }
                                 }
+                            )
+                        }
+                        tab == 4 -> {
+                            MusicScreen(
+                                api = api,
+                                json = json,
+                                scope = scope,
+                                snackbar = snackbar
                             )
                         }
                         tab == 3 && isFounder -> {
@@ -1564,6 +1578,218 @@ fun LogsScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MusicScreen - Gestion de la musique
+@Composable
+fun MusicScreen(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState
+) {
+    var selectedTab by remember { mutableStateOf(0) }
+    var uploads by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    
+    fun loadUploads() {
+        scope.launch {
+            isLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val response = api.getJson("/api/music/uploads")
+                    val data = json.parseToJsonElement(response).jsonObject
+                    val files = data["files"]?.jsonArray?.mapNotNull { 
+                        it.jsonPrimitive.contentOrNull 
+                    } ?: emptyList()
+                    withContext(Dispatchers.Main) {
+                        uploads = files
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) {
+        loadUploads()
+    }
+    
+    Column(Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = selectedTab, containerColor = Color(0xFF1E1E1E)) {
+            Tab(
+                selected = selectedTab == 0,
+                onClick = { selectedTab = 0 },
+                text = { Text("🎵 Uploads") }
+            )
+            Tab(
+                selected = selectedTab == 1,
+                onClick = { selectedTab = 1 },
+                text = { Text("📋 Playlists") }
+            )
+        }
+        
+        when (selectedTab) {
+            0 -> {
+                // Onglet Uploads
+                if (isLoading) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Color(0xFF9C27B0))
+                    }
+                } else {
+                    LazyColumn(
+                        Modifier.fillMaxSize().padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        item {
+                            Card(
+                                Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0))
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Icon(
+                                        Icons.Default.MusicNote,
+                                        null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    Text(
+                                        "🎵 Musiques Uploadées",
+                                        style = MaterialTheme.typography.titleLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        "${uploads.size} fichier(s)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = Color(0xFFE1BEE7)
+                                    )
+                                }
+                            }
+                        }
+                        
+                        if (uploads.isEmpty()) {
+                            item {
+                                Card(
+                                    Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                                ) {
+                                    Column(
+                                        Modifier.padding(32.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            null,
+                                            modifier = Modifier.size(64.dp),
+                                            tint = Color.Gray
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        Text(
+                                            "Aucune musique",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            "Uploadez des fichiers audio depuis le dashboard web",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.Gray,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            uploads.forEach { filename ->
+                                item {
+                                    Card(
+                                        Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                                    ) {
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(16.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.AudioFile,
+                                                    null,
+                                                    tint = Color(0xFF9C27B0),
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(Modifier.width(12.dp))
+                                                Text(
+                                                    filename,
+                                                    color = Color.White,
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        item {
+                            Button(
+                                onClick = { loadUploads() },
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0))
+                            ) {
+                                Icon(Icons.Default.Refresh, null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Rafraîchir")
+                            }
+                        }
+                    }
+                }
+            }
+            1 -> {
+                // Onglet Playlists (à venir)
+                Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.PlaylistPlay,
+                            null,
+                            modifier = Modifier.size(64.dp),
+                            tint = Color.Gray
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Playlists à venir",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
+                        )
+                        Text(
+                            "Fonctionnalité en développement",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
                     }
                 }
             }
