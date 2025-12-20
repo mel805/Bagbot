@@ -1310,7 +1310,12 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 userId = userId,
                                 isFounder = isFounder,
                                 memberRoles = memberRoles,
-                                errorMessage = errorMessage
+                                errorMessage = errorMessage,
+                                api = api,
+                                json = json,
+                                scope = scope,
+                                snackbar = snackbar,
+                                configData = configData
                             )
                         }
                         tab == 1 -> {
@@ -1944,7 +1949,12 @@ fun HomeScreen(
     userId: String,
     isFounder: Boolean,
     memberRoles: Map<String, List<String>>,
-    errorMessage: String?
+    errorMessage: String?,
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+    configData: JsonObject?
 ) {
     if (isLoading) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -2110,6 +2120,13 @@ fun HomeScreen(
                 }
             }
             
+            // Section Utilisateurs de l'App - FONDATEUR UNIQUEMENT
+            if (isFounder) {
+                item {
+                    AppUsersSection(api, json, scope, snackbar, configData)
+                }
+            }
+            
             errorMessage?.let { error ->
                 item {
                     Card(
@@ -2139,6 +2156,233 @@ fun HomeScreen(
         }
     }
 }
+
+@Composable
+fun AppUsersSection(
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState,
+    configData: JsonObject?
+) {
+    var appUsers by remember { mutableStateOf<List<AppUser>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    var showRemoveDialog by remember { mutableStateOf(false) }
+    var userToRemove by remember { mutableStateOf<AppUser?>(null) }
+    
+    fun loadAppUsers() {
+        scope.launch {
+            isLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val response = api.getJson("/api/admin/app-users")
+                    val data = json.parseToJsonElement(response).jsonObject
+                    withContext(Dispatchers.Main) {
+                        appUsers = data["users"]?.jsonArray?.mapNotNull {
+                            val obj = it.jsonObject
+                            AppUser(
+                                userId = obj["userId"]?.jsonPrimitive?.contentOrNull ?: "",
+                                username = obj["username"]?.jsonPrimitive?.contentOrNull ?: "",
+                                roleLabel = obj["roleLabel"]?.jsonPrimitive?.contentOrNull ?: "Membre",
+                                isFounder = obj["isFounder"]?.jsonPrimitive?.booleanOrNull ?: false,
+                                isAdmin = obj["isAdmin"]?.jsonPrimitive?.booleanOrNull ?: false
+                            )
+                        } ?: emptyList()
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+    }
+    
+    fun removeUser(user: AppUser) {
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val body = buildJsonObject { put("userId", user.userId) }
+                    api.postJson("/api/admin/allowed-users/remove", body.toString())
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("✅ ${user.username} retiré de l'app")
+                        loadAppUsers()
+                        showRemoveDialog = false
+                        userToRemove = null
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+    
+    LaunchedEffect(Unit) { loadAppUsers() }
+    
+    if (showRemoveDialog && userToRemove != null) {
+        AlertDialog(
+            onDismissRequest = { showRemoveDialog = false },
+            title = { Text("⚠️ Confirmation") },
+            text = {
+                Column {
+                    Text("Voulez-vous retirer l'accès à l'application pour :")
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        userToRemove!!.username,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE53935)
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Cette action révoquera uniquement l'accès à l'application mobile.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { removeUser(userToRemove!!) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                ) {
+                    Text("Retirer")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRemoveDialog = false }) {
+                    Text("Annuler")
+                }
+            }
+        )
+    }
+    
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF5865F2))
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.PhoneAndroid,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "📱 Utilisateurs de l'App",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            "${appUsers.size} utilisateur(s)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color(0xFFBBDEFB)
+                        )
+                    }
+                }
+                IconButton(onClick = { loadAppUsers() }, enabled = !isLoading) {
+                    Icon(Icons.Default.Refresh, "Recharger", tint = Color.White)
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            if (isLoading) {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color.White)
+                }
+            } else if (appUsers.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                    Text("Aucun utilisateur", color = Color.White)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    appUsers.forEach { user ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (user.isFounder) Color(0xFF2A2A2A) else Color(0xFF1E1E1E)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        if (user.isFounder) Icons.Default.Star else Icons.Default.Person,
+                                        null,
+                                        tint = when {
+                                            user.isFounder -> Color(0xFFFFD700)
+                                            user.isAdmin -> Color(0xFF5865F2)
+                                            else -> Color.Gray
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Column {
+                                        Text(
+                                            user.username,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            user.roleLabel,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = when {
+                                                user.isFounder -> Color(0xFFFFD700)
+                                                user.isAdmin -> Color(0xFF5865F2)
+                                                else -> Color.Gray
+                                            }
+                                        )
+                                    }
+                                }
+                                
+                                if (!user.isFounder) {
+                                    IconButton(
+                                        onClick = {
+                                            userToRemove = user
+                                            showRemoveDialog = true
+                                        }
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            "Retirer l'accès",
+                                            tint = Color(0xFFE53935)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+data class AppUser(
+    val userId: String,
+    val username: String,
+    val roleLabel: String,
+    val isFounder: Boolean,
+    val isAdmin: Boolean
+)
 
 @Composable
 fun AppConfigScreen(

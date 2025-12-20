@@ -31,6 +31,20 @@ const app = express();
 //   debug: false
 // }));
 
+// Configuration CORS pour permettre l'accès depuis dashboard web et app mobile
+const cors = require('cors');
+app.use(cors({
+  origin: [
+    'http://localhost:3002',           // Dev local
+    'http://82.67.65.98:3002',         // Prod dashboard
+    'bagbot://auth',                   // App Android OAuth callback
+    '*'                                // Autoriser tous pour dev (à restreindre en prod)
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 const PORT = 33002;
 
 app.use(express.json({limit: '50mb'}));
