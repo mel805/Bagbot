@@ -3547,8 +3547,7 @@ private fun TruthDareConfigTab(
     scope: kotlinx.coroutines.CoroutineScope,
     snackbar: SnackbarHostState
 ) {
-    var mode by remember { mutableStateOf("sfw") } // sfw or nsfw
-    var promptType by remember { mutableStateOf("v") } // v=truth, a=action for display filter
+    var mode by remember { mutableStateOf("sfw") }
     var isLoading by remember { mutableStateOf(false) }
     var prompts by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
     var channelIds by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -3579,33 +3578,17 @@ private fun TruthDareConfigTab(
     }
 
     LaunchedEffect(mode) { load() }
-    
-    // Filtrer les prompts par type
-    val filteredPrompts = prompts.filter { 
-        it["type"]?.jsonPrimitive?.contentOrNull == promptType 
-    }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             SectionCard(title = "🎲 A/V", subtitle = "Channels + prompts (SFW / NSFW)") {
-                Column {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Mode:", color = Color.White, fontWeight = FontWeight.SemiBold)
-                        TabRow(selectedTabIndex = if (mode == "sfw") 0 else 1, modifier = Modifier.weight(1f)) {
-                            Tab(selected = mode == "sfw", onClick = { mode = "sfw" }, text = { Text("🟢 SFW") })
-                            Tab(selected = mode == "nsfw", onClick = { mode = "nsfw" }, text = { Text("🔴 NSFW") })
-                        }
-                        IconButton(onClick = { load() }, enabled = !isLoading) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir", tint = Color.White)
-                        }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    TabRow(selectedTabIndex = if (mode == "sfw") 0 else 1) {
+                        Tab(selected = mode == "sfw", onClick = { mode = "sfw" }, text = { Text("🟢 SFW") })
+                        Tab(selected = mode == "nsfw", onClick = { mode = "nsfw" }, text = { Text("🔴 NSFW") })
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Row(Modifier.fillMaxWidth()) {
-                        Text("Type:", color = Color.White, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(end = 8.dp))
-                        TabRow(selectedTabIndex = if (promptType == "v") 0 else 1, modifier = Modifier.weight(1f)) {
-                            Tab(selected = promptType == "v", onClick = { promptType = "v" }, text = { Text("🤔 Vérités (${prompts.count { it[\"type\"]?.jsonPrimitive?.contentOrNull == \"v\" }})") })
-                            Tab(selected = promptType == "a", onClick = { promptType = "a" }, text = { Text("🎭 Actions (${prompts.count { it[\"type\"]?.jsonPrimitive?.contentOrNull == \"a\" }})") })
-                        }
+                    IconButton(onClick = { load() }, enabled = !isLoading) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Rafraîchir", tint = Color.White)
                     }
                 }
             }
@@ -3667,108 +3650,84 @@ private fun TruthDareConfigTab(
         }
 
         item {
-            SectionCard(title = if (promptType == "v") "🤔 Vérités (${filteredPrompts.size})" else "🎭 Actions (${filteredPrompts.size})", subtitle = "Édition rapide (texte) + suppression") {
+            SectionCard(title = "🧠 Prompts (${prompts.size})", subtitle = "Édition rapide (texte) + suppression") {
                 if (isLoading) {
                     CircularProgressIndicator()
                 } else {
-                    if (filteredPrompts.isEmpty()) {
-                        Column(
-                            Modifier.fillMaxWidth().padding(32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                if (promptType == "v") Icons.Default.Info else Icons.Default.Person,
-                                null,
-                                modifier = Modifier.size(48.dp),
-                                tint = Color.Gray
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                "Aucun prompt ${if (promptType == "v") "Vérité" else "Action"}",
-                                color = Color.Gray,
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    } else {
-                        filteredPrompts.sortedBy { it["id"]?.jsonPrimitive?.intOrNull ?: 0 }.forEach { p ->
-                            val id = p["id"]?.jsonPrimitive?.intOrNull ?: 0
-                            val type = p["type"]?.jsonPrimitive?.contentOrNull ?: "v"
-                            var text by remember(id, mode) { mutableStateOf(p["text"]?.jsonPrimitive?.contentOrNull ?: "") }
+                    prompts.sortedBy { it["id"]?.jsonPrimitive?.intOrNull ?: 0 }.forEach { p ->
+                        val id = p["id"]?.jsonPrimitive?.intOrNull ?: 0
+                        val type = p["type"]?.jsonPrimitive?.contentOrNull ?: "v"
+                        var text by remember(id, mode) { mutableStateOf(p["text"]?.jsonPrimitive?.contentOrNull ?: "") }
 
-                            Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text("ID #$id • ${if (type == "a") "Action" else "Vérité"}", color = Color.White, fontWeight = FontWeight.SemiBold)
-                                    Spacer(Modifier.height(8.dp))
-                                    OutlinedTextField(
-                                        value = text,
-                                        onValueChange = { text = it },
-                                        label = { Text("Texte") },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        minLines = 2
-                                    )
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(
-                                            onClick = {
-                                                scope.launch {
-                                                    withContext(Dispatchers.IO) {
-                                                        try {
-                                                            api.putJson(
-                                                                "/api/truthdare/$mode/$id",
-                                                                json.encodeToString(JsonObject.serializer(), buildJsonObject { put("text", text) })
-                                                            )
-                                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Prompt modifié") }
-                                                            load()
-                                                        } catch (e: Exception) {
-                                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
-                                                        }
+                        Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text("ID #$id • ${if (type == "a") "Action" else "Vérité"}", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = text,
+                                    onValueChange = { text = it },
+                                    label = { Text("Texte") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    minLines = 2
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(
+                                        onClick = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    try {
+                                                        api.putJson(
+                                                            "/api/truthdare/$mode/$id",
+                                                            json.encodeToString(JsonObject.serializer(), buildJsonObject { put("text", text) })
+                                                        )
+                                                        withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Prompt modifié") }
+                                                        load()
+                                                    } catch (e: Exception) {
+                                                        withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
                                                     }
                                                 }
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("💾 Sauver") }
-                                        OutlinedButton(
-                                            onClick = {
-                                                scope.launch {
-                                                    withContext(Dispatchers.IO) {
-                                                        try {
-                                                            api.deleteJson("/api/truthdare/$mode/$id")
-                                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Prompt supprimé") }
-                                                            load()
-                                                        } catch (e: Exception) {
-                                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
-                                                        }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("💾 Sauver") }
+                                    OutlinedButton(
+                                        onClick = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    try {
+                                                        api.deleteJson("/api/truthdare/$mode/$id")
+                                                        withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Prompt supprimé") }
+                                                        load()
+                                                    } catch (e: Exception) {
+                                                        withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
                                                     }
                                                 }
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("🗑️ Supprimer") }
-                                    }
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f)
+                                    ) { Text("🗑️ Supprimer") }
                                 }
                             }
-                            Spacer(Modifier.height(10.dp))
                         }
+                        Spacer(Modifier.height(10.dp))
                     }
                 }
 
                 Divider(color = Color(0xFF2A2A2A))
                 Spacer(Modifier.height(12.dp))
-                Text("➕ Ajouter ${if (promptType == "v") "une Vérité" else "une Action"}", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text("➕ Ajouter un prompt", color = Color.White, fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(8.dp))
-                // Automatically set newPromptType based on current tab
-                LaunchedEffect(promptType) {
-                    newPromptType = promptType
-                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AssistChip(
-                        onClick = { newPromptType = "v"; promptType = "v" },
+                        onClick = { newPromptType = "v" },
                         label = { Text("Vérité") },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (newPromptType == "v") Color(0xFF2E7D32) else Color(0xFF2A2A2A)
                         )
                     )
                     AssistChip(
-                        onClick = { newPromptType = "a"; promptType = "a" },
+                        onClick = { newPromptType = "a" },
                         label = { Text("Action") },
                         colors = AssistChipDefaults.assistChipColors(
                             containerColor = if (newPromptType == "a") Color(0xFFB71C1C) else Color(0xFF2A2A2A)
