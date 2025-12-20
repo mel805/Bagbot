@@ -3677,7 +3677,7 @@ private fun TruthDareConfigTab(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Icon(
-                                if (promptType == "v") Icons.Default.QuestionMark else Icons.Default.EmojiPeople,
+                                if (promptType == "v") Icons.Default.Info else Icons.Default.Person,
                                 null,
                                 modifier = Modifier.size(48.dp),
                                 tint = Color.Gray
