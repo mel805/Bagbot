@@ -705,7 +705,7 @@ fun StaffMainScreen(
         }
         when (selectedStaffTab) {
             0 -> StaffChatScreen(api, json, scope, snackbar, members, userInfo)
-            1 -> AdminScreenWithAccess(members, memberRoles, configData, api, json, scope, snackbar)
+            1 -> AdminScreenWithAccess(members, memberRoles, configData, api, json, scope, snackbar, isFounder)
         }
     }
 }
@@ -1973,7 +1973,8 @@ fun AdminScreenWithAccess(
     api: ApiClient,
     json: Json,
     scope: kotlinx.coroutines.CoroutineScope,
-    snackbar: SnackbarHostState
+    snackbar: SnackbarHostState,
+    isFounder: Boolean  // Ajout du paramètre isFounder
 ) {
     var allowedUsers by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
@@ -2016,6 +2017,12 @@ fun AdminScreenWithAccess(
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error loading dashboard URL: ${e.message}")
+                    withContext(Dispatchers.Main) {
+                        // Si l'erreur est 403 (Forbidden), ne rien afficher car l'utilisateur n'est pas fondateur
+                        if (e.message?.contains("403") != true) {
+                            snackbar.showSnackbar("❌ Erreur chargement URL: ${e.message}")
+                        }
+                    }
                 } finally {
                     withContext(Dispatchers.Main) { isLoadingUrl = false }
                 }
@@ -2037,7 +2044,12 @@ fun AdminScreenWithAccess(
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                        val errorMsg = when {
+                            e.message?.contains("403") == true -> "❌ Seul le fondateur peut modifier l'URL"
+                            e.message?.contains("400") == true -> "❌ Format d'URL invalide"
+                            else -> "❌ Erreur: ${e.message}"
+                        }
+                        snackbar.showSnackbar(errorMsg)
                     }
                 }
             }
@@ -2068,8 +2080,10 @@ fun AdminScreenWithAccess(
                 }
             }
         }
-        // Charger aussi l'URL du dashboard
-        loadDashboardUrl()
+        // Charger l'URL du dashboard UNIQUEMENT pour le fondateur
+        if (isFounder) {
+            loadDashboardUrl()
+        }
     }
     
     fun removeUser(userId: String) {
@@ -2252,81 +2266,92 @@ fun AdminScreenWithAccess(
             }
         }
         
-        // Dashboard URL Configuration Card
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3))
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Link,
-                                null,
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    "🔗 URL du Dashboard",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
+        // Dashboard URL Configuration Card - VISIBLE UNIQUEMENT PAR LE FONDATEUR
+        if (isFounder) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2196F3))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.Link,
+                                    null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
                                 )
-                                if (isLoadingUrl) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(16.dp),
-                                        color = Color.White,
-                                        strokeWidth = 2.dp
-                                    )
-                                } else if (dashboardUrl.isNotBlank()) {
-                                    Text(
-                                        dashboardUrl,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFFBBDEFB)
-                                    )
-                                } else {
-                                    Text(
-                                        "Non configurée",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFFFFCDD2)
-                                    )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "🔗 URL du Dashboard",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Default.Star,
+                                            "Fondateur uniquement",
+                                            tint = Color(0xFFFFD700),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    if (isLoadingUrl) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else if (dashboardUrl.isNotBlank()) {
+                                        Text(
+                                            dashboardUrl,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFBBDEFB)
+                                        )
+                                    } else {
+                                        Text(
+                                            "Non configurée",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color(0xFFFFCDD2)
+                                        )
+                                    }
                                 }
                             }
+                            IconButton(onClick = {
+                                dashboardUrlInput = dashboardUrl
+                                showDashboardUrlDialog = true
+                            }) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    "Modifier l'URL",
+                                    tint = Color.White
+                                )
+                            }
                         }
-                        IconButton(onClick = {
-                            dashboardUrlInput = dashboardUrl
-                            showDashboardUrlDialog = true
-                        }) {
-                            Icon(
-                                Icons.Default.Edit,
-                                "Modifier l'URL",
-                                tint = Color.White
-                            )
-                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "👑 Réservé au fondateur - Cette URL est utilisée par la commande /dashboard du bot Discord",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFE3F2FD)
+                        )
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Cette URL est utilisée par la commande /dashboard du bot Discord",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color(0xFFE3F2FD)
-                    )
                 }
             }
-        }
-        
-        item {
-            Divider(
-                color = Color(0xFF2A2A2A),
-                thickness = 2.dp,
-                modifier = Modifier.padding(vertical = 8.dp)
-            )
+            
+            item {
+                Divider(
+                    color = Color(0xFF2A2A2A),
+                    thickness = 2.dp,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
         }
         
         item {

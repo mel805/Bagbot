@@ -2360,9 +2360,28 @@ app.put('/api/configs/:section', express.json(), (req, res) => {
 
 // ============ Dashboard URL Configuration ============
 
-// Get dashboard URL
+// Get dashboard URL - FONDATEUR UNIQUEMENT
 app.get('/api/admin/dashboard-url', (req, res) => {
   try {
+    // Vérifier l'authentification
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token' });
+    }
+    
+    const token = authHeader.substring(7);
+    const userData = appTokens.get('token_' + token);
+    
+    if (!userData) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Vérifier que l'utilisateur est le fondateur
+    const FOUNDER_ID = '943487722738311219';
+    if (userData.userId !== FOUNDER_ID) {
+      return res.status(403).json({ error: 'Only the server founder can access the dashboard URL' });
+    }
+    
     const config = readConfig();
     const guildConfig = config.guilds[GUILD] || {};
     const dashboardUrl = guildConfig.dashboardUrl || `http://82.67.65.98:${PORT}`;
@@ -2373,9 +2392,29 @@ app.get('/api/admin/dashboard-url', (req, res) => {
   }
 });
 
-// Update dashboard URL
+// Update dashboard URL - FONDATEUR UNIQUEMENT
 app.post('/api/admin/dashboard-url', (req, res) => {
   try {
+    // Vérifier l'authentification
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token' });
+    }
+    
+    const token = authHeader.substring(7);
+    const userData = appTokens.get('token_' + token);
+    
+    if (!userData) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Vérifier que l'utilisateur est le fondateur
+    const FOUNDER_ID = '943487722738311219';
+    if (userData.userId !== FOUNDER_ID) {
+      console.log(`⚠️ Tentative de modification de l'URL du dashboard par ${userData.username} (${userData.userId}) - REFUSÉE`);
+      return res.status(403).json({ error: 'Only the server founder can modify the dashboard URL' });
+    }
+    
     const { dashboardUrl } = req.body;
     if (!dashboardUrl || typeof dashboardUrl !== 'string') {
       return res.status(400).json({ error: 'Invalid dashboard URL' });
@@ -2393,7 +2432,7 @@ app.post('/api/admin/dashboard-url', (req, res) => {
     config.guilds[GUILD].dashboardUrl = dashboardUrl.trim();
 
     if (writeConfig(config)) {
-      console.log(`✅ Dashboard URL configurée: ${dashboardUrl}`);
+      console.log(`✅ Dashboard URL configurée par le fondateur ${userData.username}: ${dashboardUrl}`);
       res.json({ success: true, dashboardUrl: config.guilds[GUILD].dashboardUrl });
     } else {
       res.status(500).json({ error: 'Failed to save config' });
