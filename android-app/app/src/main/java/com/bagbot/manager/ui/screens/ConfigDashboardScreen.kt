@@ -1294,68 +1294,68 @@ private fun EconomyConfigTab(
                         }
                     }
                     
-                    when (selectedKarmaTab) {
-                        0 -> {
-                            // Shop modifiers
-                            val shopMods = remember(karmaModifiers) {
-                                karmaModifiers?.arr("shop")?.mapNotNull { it.jsonObject } ?: emptyList()
-                            }
-                            item {
-                                Text("🛒 Modificateurs Boutique", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                                Text("${shopMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            }
-                            itemsIndexed(shopMods) { i, m ->
-                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                            Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
-                                        }
+                    // Shop modifiers
+                    if (selectedKarmaTab == 0) {
+                        val shopMods = remember(karmaModifiers) {
+                            karmaModifiers?.arr("shop")?.mapNotNull { it.jsonObject } ?: emptyList()
+                        }
+                        item {
+                            Text("🛒 Modificateurs Boutique", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                            Text("${shopMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        itemsIndexed(shopMods) { i, m ->
+                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                        Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                         }
-                        1 -> {
-                            // Actions modifiers
-                            val actionMods = remember(karmaModifiers) {
-                                karmaModifiers?.arr("actions")?.mapNotNull { it.jsonObject } ?: emptyList()
-                            }
-                            item {
-                                Text("🎭 Modificateurs Actions", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                                Text("${actionMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            }
-                            itemsIndexed(actionMods) { i, m ->
-                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                            Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
-                                        }
+                    }
+                    
+                    // Actions modifiers
+                    if (selectedKarmaTab == 1) {
+                        val actionMods = remember(karmaModifiers) {
+                            karmaModifiers?.arr("actions")?.mapNotNull { it.jsonObject } ?: emptyList()
+                        }
+                        item {
+                            Text("🎭 Modificateurs Actions", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                            Text("${actionMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        itemsIndexed(actionMods) { i, m ->
+                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                        Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
                         }
-                        2 -> {
-                            // Grants
-                            val grants = remember(karmaModifiers) {
-                                karmaModifiers?.arr("grants")?.mapNotNull { it.jsonObject } ?: emptyList()
-                            }
-                            item {
-                                Text("🎁 Grants (Bonus seuils)", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                                Text("${grants.size} grants configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            }
-                            itemsIndexed(grants) { i, g ->
-                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(g.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                        Text(g.str("description") ?: "", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                        Spacer(Modifier.height(4.dp))
-                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text("Condition: ${g.str("condition")}", color = Color(0xFF5865F2), style = MaterialTheme.typography.bodySmall)
-                                            Text("+${g.int("money") ?: 0} $currencyName", color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
-                                        }
+                    }
+                    
+                    // Grants
+                    if (selectedKarmaTab == 2) {
+                        val grants = remember(karmaModifiers) {
+                            karmaModifiers?.arr("grants")?.mapNotNull { it.jsonObject } ?: emptyList()
+                        }
+                        item {
+                            Text("🎁 Grants (Bonus seuils)", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                            Text("${grants.size} grants configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                        }
+                        itemsIndexed(grants) { i, g ->
+                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                Column(Modifier.padding(12.dp)) {
+                                    Text(g.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                    Text(g.str("description") ?: "", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text("Condition: ${g.str("condition")}", color = Color(0xFF5865F2), style = MaterialTheme.typography.bodySmall)
+                                        Text("+${g.int("money") ?: 0} $currencyName", color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
