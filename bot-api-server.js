@@ -380,13 +380,25 @@ app.get('/api/dashboard/stats', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Guild not found' });
     }
     
-    await guild.members.fetch();
+    console.log('[BOT-API] Fetching members for stats...');
+    
+    // Essayer de fetch les membres avec timeout
+    try {
+      await Promise.race([
+        guild.members.fetch(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000))
+      ]);
+    } catch (fetchError) {
+      console.warn('[BOT-API] Member fetch failed, using cache:', fetchError.message);
+    }
     
     const members = guild.members.cache;
     const totalMembers = members.size;
     const totalBots = members.filter(m => m.user.bot).size;
     const totalHumans = totalMembers - totalBots;
     const onlineMembers = members.filter(m => m.presence?.status === 'online').size;
+    
+    console.log(`[BOT-API] Stats: ${totalMembers} membres (${totalBots} bots, ${totalHumans} humains)`);
     
     const config = await readConfig();
     const guildConfig = config.guilds[GUILD] || {};
