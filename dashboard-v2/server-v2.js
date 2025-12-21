@@ -610,6 +610,64 @@ app.get('/api/configs', async (req, res) => {
   }
 });
 
+// PUT /api/configs/:section - Mettre à jour une section de config
+app.put('/api/configs/:section', express.json(), (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'No token' });
+  }
+  
+  const token = authHeader.substring(7);
+  const userData = appTokens.get('token_' + token);
+  
+  if (!userData) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+  
+  const { section } = req.params;
+  const updates = req.body;
+  
+  try {
+    const config = readConfig();
+    
+    console.log(`📝 [DEBUG] Config AVANT update section '${section}':`, JSON.stringify(config.guilds?.[GUILD]?.[section], null, 2));
+    console.log(`📝 [DEBUG] Updates reçus:`, JSON.stringify(updates, null, 2));
+    
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    
+    if (!config.guilds[GUILD][section]) {
+      config.guilds[GUILD][section] = {};
+    }
+    
+    // Merger les updates avec la structure existante
+    config.guilds[GUILD][section] = { ...config.guilds[GUILD][section], ...updates };
+    
+    console.log(`📝 [DEBUG] Config APRÈS merge:`, JSON.stringify(config.guilds[GUILD][section], null, 2));
+    
+    if (writeConfig(config)) {
+      console.log(`✅ Config section '${section}' updated by ${userData.username} (${userData.userId})`);
+      
+      // Envoyer signal au bot
+      try {
+        const signalPath = path.join(__dirname, '../data/config-updated.signal');
+        fs.writeFileSync(signalPath, Date.now().toString(), 'utf8');
+        console.log('📡 Signal envoyé au bot pour recharger la config');
+      } catch (e) {
+        console.error('⚠️ Erreur envoi signal:', e.message);
+      }
+      
+      res.json({ success: true, section, config: config.guilds[GUILD][section] });
+    } else {
+      console.error(`❌ Failed to write config for section '${section}'`);
+      res.status(500).json({ error: 'Failed to write config' });
+    }
+  } catch (error) {
+    console.error('❌ Config update error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get Discord channels
 app.get('/api/discord/channels', async (req, res) => {
   try {
