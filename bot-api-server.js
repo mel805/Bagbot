@@ -247,6 +247,23 @@ app.get('/api/me', requireAuth, (req, res) => {
   });
 });
 
+// DEBUG: Liste des tokens actifs (temporaire)
+app.get('/api/debug/tokens', (req, res) => {
+  const tokens = [];
+  for (const [key, data] of appTokens.entries()) {
+    if (key.startsWith('token_')) {
+      tokens.push({
+        username: data.username,
+        userId: data.userId,
+        age: Math.floor((Date.now() - data.timestamp) / 1000) + 's',
+        isFounder: data.isFounder,
+        isAdmin: data.isAdmin
+      });
+    }
+  }
+  res.json({ count: tokens.length, tokens });
+});
+
 // Login endpoint (temporaire - nécessite Discord OAuth pour production)
 app.post('/auth/login', async (req, res) => {
   const { userId, username } = req.body;
@@ -525,6 +542,193 @@ app.get('/api/music/stream/:filename', (req, res) => {
     res.sendFile(filepath);
   } catch (error) {
     console.error('[BOT-API] Error streaming file:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ========== PLAYLISTS ==========
+
+// GET /api/music/playlists - Liste des playlists
+app.get('/api/music/playlists', requireAuth, (req, res) => {
+  try {
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
+    const oldPlaylistsDir = path.join(__dirname, '../data/playlists');
+    let playlists = [];
+    
+    // Nouveau format
+    if (fs.existsSync(playlistsPath)) {
+      const content = fs.readFileSync(playlistsPath, 'utf8');
+      try {
+        playlists = JSON.parse(content);
+      } catch (e) {
+        console.error('[BOT-API] Error parsing playlists.json:', e.message);
+      }
+    }
+    
+    // Ancien format (fichiers individuels)
+    if (fs.existsSync(oldPlaylistsDir)) {
+      const files = fs.readdirSync(oldPlaylistsDir).filter(f => f.endsWith('.json'));
+      files.forEach(file => {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(oldPlaylistsDir, file), 'utf8'));
+          // Convertir ancien → nouveau
+          if (content.tracks && !content.songs) {
+            content.songs = content.tracks.map(t => ({
+              id: t.filename || Date.now().toString(),
+              filename: t.filename,
+              title: t.title || t.filename,
+              addedAt: t.addedAt || Date.now()
+            }));
+            delete content.tracks;
+          }
+          if (!content.id) content.id = file.replace('.json', '');
+          playlists.push(content);
+        } catch (e) {
+          console.error(`[BOT-API] Error reading playlist ${file}:`, e.message);
+        }
+      });
+    }
+    
+    res.json({ playlists, count: playlists.length });
+  } catch (error) {
+    console.error('[BOT-API] Error in /api/music/playlists:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/music/playlists - Créer une playlist
+app.post('/api/music/playlists', requireAuth, express.json(), (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) {
+      return res.status(400).json({ error: 'Name required' });
+    }
+    
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
+    let playlists = [];
+    
+    if (fs.existsSync(playlistsPath)) {
+      playlists = JSON.parse(fs.readFileSync(playlistsPath, 'utf8'));
+    }
+    
+    const newPlaylist = {
+      id: Date.now().toString(),
+      name,
+      songs: [],
+      createdAt: new Date().toISOString()
+    };
+    
+    playlists.push(newPlaylist);
+    fs.writeFileSync(playlistsPath, JSON.stringify(playlists, null, 2), 'utf8');
+    
+    console.log(`✅ [BOT-API] Playlist created: ${name}`);
+    res.json({ success: true, playlist: newPlaylist });
+  } catch (error) {
+    console.error('[BOT-API] Error creating playlist:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/music/playlists/:id/songs - Ajouter une musique
+app.post('/api/music/playlists/:id/songs', requireAuth, express.json(), (req, res) => {
+  try {
+    const { id } = req.params;
+    const { filename, title } = req.body;
+    
+    if (!filename) {
+      return res.status(400).json({ error: 'Filename required' });
+    }
+    
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
+    if (!fs.existsSync(playlistsPath)) {
+      return res.status(404).json({ error: 'No playlists found' });
+    }
+    
+    let playlists = JSON.parse(fs.readFileSync(playlistsPath, 'utf8'));
+    const playlist = playlists.find(p => p.id === id);
+    
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist not found' });
+    }
+    
+    const song = {
+      id: Date.now().toString(),
+      filename,
+      title: title || filename,
+      addedAt: new Date().toISOString()
+    };
+    
+    if (!playlist.songs) playlist.songs = [];
+    playlist.songs.push(song);
+    
+    fs.writeFileSync(playlistsPath, JSON.stringify(playlists, null, 2), 'utf8');
+    
+    console.log(`✅ [BOT-API] Song added to playlist ${playlist.name}: ${filename}`);
+    res.json({ success: true, song, playlist });
+  } catch (error) {
+    console.error('[BOT-API] Error adding song:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/music/playlists/:id/songs/:songId - Retirer une musique
+app.delete('/api/music/playlists/:id/songs/:songId', requireAuth, (req, res) => {
+  try {
+    const { id, songId } = req.params;
+    
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
+    if (!fs.existsSync(playlistsPath)) {
+      return res.status(404).json({ error: 'No playlists found' });
+    }
+    
+    let playlists = JSON.parse(fs.readFileSync(playlistsPath, 'utf8'));
+    const playlist = playlists.find(p => p.id === id);
+    
+    if (!playlist || !playlist.songs) {
+      return res.status(404).json({ error: 'Playlist or songs not found' });
+    }
+    
+    const initialLength = playlist.songs.length;
+    playlist.songs = playlist.songs.filter(s => s.id !== songId);
+    
+    if (playlist.songs.length === initialLength) {
+      return res.status(404).json({ error: 'Song not found' });
+    }
+    
+    fs.writeFileSync(playlistsPath, JSON.stringify(playlists, null, 2), 'utf8');
+    
+    console.log(`✅ [BOT-API] Song removed from playlist ${playlist.name}`);
+    res.json({ success: true, playlist });
+  } catch (error) {
+    console.error('[BOT-API] Error removing song:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE /api/music/playlists/:id - Supprimer une playlist
+app.delete('/api/music/playlists/:id', requireAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
+    
+    if (!fs.existsSync(playlistsPath)) {
+      return res.status(404).json({ error: 'No playlists found' });
+    }
+    
+    let playlists = JSON.parse(fs.readFileSync(playlistsPath, 'utf8'));
+    const initialLength = playlists.length;
+    playlists = playlists.filter(p => p.id !== id);
+    
+    if (playlists.length === initialLength) {
+      return res.status(404).json({ error: 'Playlist not found' });
+    }
+    
+    fs.writeFileSync(playlistsPath, JSON.stringify(playlists, null, 2), 'utf8');
+    
+    console.log(`✅ [BOT-API] Playlist deleted: ${id}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('[BOT-API] Error deleting playlist:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
