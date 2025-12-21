@@ -2378,6 +2378,53 @@ app.get('/api/admin/allowed-users', (req, res) => {
   res.json({ allowedUsers: Array.from(allowedUsers) });
 });
 
+// GET /api/admin/logs/:service - Récupérer les logs PM2
+app.get('/api/admin/logs/:service', (req, res) => {
+  const { service } = req.params;
+  const { exec } = require('child_process');
+  
+  // Valider le service
+  if (!['bot', 'dashboard'].includes(service)) {
+    return res.status(400).json({ error: 'Invalid service' });
+  }
+  
+  // Mapper au nom du process PM2
+  const processName = service === 'bot' ? 'bagbot' : 'dashboard';
+  
+  exec(`pm2 logs ${processName} --lines 100 --nostream`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error getting logs for ${processName}:`, error);
+      return res.status(500).json({ error: error.message, logs: stderr || '' });
+    }
+    
+    res.json({ logs: stdout || 'Aucun log disponible' });
+  });
+});
+
+// POST /api/admin/restart/:service - Redémarrer un service PM2
+app.post('/api/admin/restart/:service', (req, res) => {
+  const { service } = req.params;
+  const { exec } = require('child_process');
+  
+  // Valider le service
+  if (!['bot', 'dashboard'].includes(service)) {
+    return res.status(400).json({ error: 'Invalid service' });
+  }
+  
+  // Mapper au nom du process PM2
+  const processName = service === 'bot' ? 'bagbot' : 'dashboard';
+  
+  exec(`pm2 restart ${processName}`, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`Error restarting ${processName}:`, error);
+      return res.status(500).json({ error: error.message });
+    }
+    
+    console.log(`✅ Service ${processName} restarted`);
+    res.json({ success: true, message: `${service} redémarré` });
+  });
+});
+
 // POST /api/admin/allowed-users - Ajouter un utilisateur
 app.post('/api/admin/allowed-users', express.json(), (req, res) => {
   const authHeader = req.headers['authorization'];
