@@ -2121,7 +2121,87 @@ app.get('/auth/mobile/callback', async (req, res) => {
       req.end();
     });
     
-    // Générer token app
+    // ✅ VÉRIFICATION : L'utilisateur doit être membre du serveur ET admin (ou fondateur)
+    const guild = client.guilds.cache.get(GUILD);
+    if (!guild) {
+      return res.status(500).send('❌ Serveur Discord introuvable');
+    }
+    
+    // Récupérer le membre
+    let member;
+    try {
+      member = await guild.members.fetch(userData.id);
+    } catch (e) {
+      console.log('❌ User', userData.username, 'is not a member of the server');
+      return res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Accès refusé</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      height: 100vh; 
+      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+      color: white;
+      margin: 0;
+    }
+    .container { text-align: center; }
+    h1 { font-size: 2em; margin-bottom: 20px; }
+    p { font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚫 Accès refusé</h1>
+    <p>Vous devez être membre du serveur Discord pour accéder à cette application.</p>
+  </div>
+</body>
+</html>`);
+    }
+    
+    // Vérifier si admin ou fondateur
+    const configs = readConfigs();
+    const staffRoleIds = configs.staffRoleIds || [];
+    const isAdmin = staffRoleIds.some(roleId => member.roles.cache.has(roleId));
+    const isFounder = userData.id === FOUNDER_ID;
+    
+    if (!isFounder && !isAdmin) {
+      console.log('❌ User', userData.username, 'is not an admin');
+      return res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Accès refusé</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      display: flex; 
+      align-items: center; 
+      justify-content: center; 
+      height: 100vh; 
+      background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+      color: white;
+      margin: 0;
+    }
+    .container { text-align: center; }
+    h1 { font-size: 2em; margin-bottom: 20px; }
+    p { font-size: 1.2em; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🚫 Accès refusé</h1>
+    <p>Cette application est réservée aux administrateurs du serveur.</p>
+  </div>
+</body>
+</html>`);
+    }
+    
+    // ✅ L'utilisateur est autorisé : générer token app
     const appToken = generateToken();
     appTokens.set('token_' + appToken, {
       userId: userData.id,
@@ -2131,7 +2211,7 @@ app.get('/auth/mobile/callback', async (req, res) => {
       timestamp: Date.now()
     });
     
-    console.log('✅ Mobile auth successful for', userData.username, '(' + userData.id + ')');
+    console.log('✅ Mobile auth successful for', userData.username, '(' + userData.id + ')' + (isFounder ? ' [FOUNDER]' : ' [ADMIN]'));
     
     const redirectUrl = `${app_redirect}?token=${appToken}`;
     
@@ -2580,6 +2660,83 @@ app.post('/api/admin/restart/:service', express.json(), (req, res) => {
     });
   } catch (err) {
     console.error('Error in /api/admin/restart:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /api/admin/dashboard-url - Récupérer l'URL du dashboard
+app.get('/api/admin/dashboard-url', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token' });
+    }
+    
+    const token = authHeader.substring(7);
+    const userData = appTokens.get('token_' + token);
+    if (!userData) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Seul le fondateur peut accéder
+    if (userData.userId !== FOUNDER_ID) {
+      return res.status(403).json({ error: 'Forbidden - Founder only' });
+    }
+    
+    // Lire l'URL depuis app-config.json
+    const appConfigPath = path.join(DATA_DIR, 'app-config.json');
+    let dashboardUrl = 'http://88.174.155.230:33002'; // Valeur par défaut
+    
+    if (fs.existsSync(appConfigPath)) {
+      try {
+        const appConfig = JSON.parse(fs.readFileSync(appConfigPath, 'utf8'));
+        dashboardUrl = appConfig.dashboardUrl || dashboardUrl;
+      } catch (e) {
+        console.error('Error reading app-config.json:', e);
+      }
+    }
+    
+    res.json({ dashboardUrl });
+  } catch (error) {
+    console.error('Error in /api/admin/dashboard-url:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/admin/dashboard-url - Modifier l'URL du dashboard
+app.put('/api/admin/dashboard-url', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token' });
+    }
+    
+    const token = authHeader.substring(7);
+    const userData = appTokens.get('token_' + token);
+    if (!userData) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Seul le fondateur peut modifier
+    if (userData.userId !== FOUNDER_ID) {
+      return res.status(403).json({ error: 'Forbidden - Founder only' });
+    }
+    
+    const { dashboardUrl } = req.body;
+    if (!dashboardUrl || typeof dashboardUrl !== 'string') {
+      return res.status(400).json({ error: 'dashboardUrl required' });
+    }
+    
+    // Sauvegarder dans app-config.json
+    const appConfigPath = path.join(DATA_DIR, 'app-config.json');
+    const appConfig = { dashboardUrl };
+    
+    fs.writeFileSync(appConfigPath, JSON.stringify(appConfig, null, 2), 'utf8');
+    console.log('✅ Dashboard URL updated:', dashboardUrl);
+    
+    res.json({ success: true, dashboardUrl });
+  } catch (error) {
+    console.error('Error in /api/admin/dashboard-url:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

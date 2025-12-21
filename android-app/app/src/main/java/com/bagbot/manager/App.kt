@@ -1208,6 +1208,14 @@ fun LoginScreen(
     onBaseUrlChange: (String) -> Unit,
     onLogin: () -> Unit
 ) {
+    // Hardcoder l'URL du dashboard
+    val defaultUrl = "http://88.174.155.230:33002"
+    LaunchedEffect(Unit) {
+        if (baseUrl.isEmpty()) {
+            onBaseUrlChange(defaultUrl)
+        }
+    }
+    
     Column(
         Modifier
             .fillMaxSize()
@@ -1241,17 +1249,6 @@ fun LoginScreen(
         )
         
         Spacer(Modifier.height(48.dp))
-        
-        OutlinedTextField(
-            value = baseUrl,
-            onValueChange = onBaseUrlChange,
-            label = { Text("URL Dashboard") },
-            placeholder = { Text("http://88.174.155.230:33002") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
-        Spacer(Modifier.height(16.dp))
         
         Button(
             onClick = onLogin,
