@@ -310,29 +310,40 @@ app.get('/api/configs', async (req, res) => {
     const config = await readConfig();
     const guildConfig = config.guilds[GUILD] || {};
     
-    // Filtrer pour ne garder que les membres actuels du serveur
-    const guild = req.app.locals.client.guilds.cache.get(GUILD);
-    if (guild) {
-      await guild.members.fetch();
-      const currentMemberIds = guild.members.cache.map(m => m.id);
-      
-      // Filtrer économie
-      if (guildConfig.economy && guildConfig.economy.balances) {
-        const filtered = {};
-        for (const [uid, data] of Object.entries(guildConfig.economy.balances)) {
-          if (currentMemberIds.includes(uid)) filtered[uid] = data;
+    // Filtrer pour ne garder que les membres actuels du serveur (avec timeout)
+    try {
+      const guild = req.app.locals.client.guilds.cache.get(GUILD);
+      if (guild) {
+        // Fetch avec timeout de 3 secondes
+        await Promise.race([
+          guild.members.fetch(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
+        ]);
+        
+        const currentMemberIds = guild.members.cache.map(m => m.id);
+        console.log(`[API] Filtrage avec ${currentMemberIds.length} membres actuels`);
+        
+        // Filtrer économie
+        if (guildConfig.economy && guildConfig.economy.balances) {
+          const filtered = {};
+          for (const [uid, data] of Object.entries(guildConfig.economy.balances)) {
+            if (currentMemberIds.includes(uid)) filtered[uid] = data;
+          }
+          guildConfig.economy.balances = filtered;
         }
-        guildConfig.economy.balances = filtered;
-      }
-      
-      // Filtrer niveaux
-      if (guildConfig.levels && guildConfig.levels.users) {
-        const filtered = {};
-        for (const [uid, data] of Object.entries(guildConfig.levels.users)) {
-          if (currentMemberIds.includes(uid)) filtered[uid] = data;
+        
+        // Filtrer niveaux
+        if (guildConfig.levels && guildConfig.levels.users) {
+          const filtered = {};
+          for (const [uid, data] of Object.entries(guildConfig.levels.users)) {
+            if (currentMemberIds.includes(uid)) filtered[uid] = data;
+          }
+          guildConfig.levels.users = filtered;
         }
-        guildConfig.levels.users = filtered;
       }
+    } catch (filterError) {
+      console.warn('[API] Member filtering skipped:', filterError.message);
+      // Continue sans filtrage si timeout ou erreur
     }
     
     res.json(guildConfig);
