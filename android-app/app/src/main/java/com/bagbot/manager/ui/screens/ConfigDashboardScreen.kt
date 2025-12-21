@@ -3588,10 +3588,21 @@ private fun TruthDareConfigTab(
     // Filtrer par type selon l'onglet actif
     val filteredPrompts = prompts.filter { 
         val type = it["type"]?.jsonPrimitive?.contentOrNull ?: "v"
-        if (promptTab == 0) type == "v" else type == "a"
+        // Supporter les deux formats: "v"/"a" ET "verite"/"action"
+        if (promptTab == 0) {
+            type == "v" || type == "verite" || type == "vérité"
+        } else {
+            type == "a" || type == "action"
+        }
     }
-    val veritesCount = prompts.count { it["type"]?.jsonPrimitive?.contentOrNull == "v" }
-    val actionsCount = prompts.count { it["type"]?.jsonPrimitive?.contentOrNull == "a" }
+    val veritesCount = prompts.count { 
+        val type = it["type"]?.jsonPrimitive?.contentOrNull ?: ""
+        type == "v" || type == "verite" || type == "vérité"
+    }
+    val actionsCount = prompts.count { 
+        val type = it["type"]?.jsonPrimitive?.contentOrNull ?: ""
+        type == "a" || type == "action"
+    }
 
     Column(Modifier.fillMaxSize()) {
         // TabRow Vérités/Actions EN HAUT
