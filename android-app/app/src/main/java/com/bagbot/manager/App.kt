@@ -1832,59 +1832,96 @@ fun MusicScreen(
                         snackbar.showSnackbar("⏹ Arrêté")
                     }
                 } else {
-                    // Arrêter la musique actuelle
                     withContext(Dispatchers.Main) {
                         if (mediaPlayer.isPlaying) {
                             mediaPlayer.stop()
                         }
                         mediaPlayer.reset()
+                        snackbar.showSnackbar("⏳ Téléchargement...")
                     }
                     
-                    // Jouer la nouvelle musique
+                    // Télécharger le fichier en cache au lieu de streamer directement
                     val url = "$baseUrl/api/music/stream/${java.net.URLEncoder.encode(filename, "UTF-8")}"
-                    android.util.Log.d("MusicPlayer", "Playing URL: $url")
+                    android.util.Log.d("MusicPlayer", "Downloading: $url")
                     
-                    withContext(Dispatchers.Main) {
-                        snackbar.showSnackbar("⏳ Chargement...")
-                        
+                    withContext(Dispatchers.IO) {
                         try {
-                            mediaPlayer.setDataSource(url)
+                            val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                            connection.requestMethod = "GET"
+                            connection.connectTimeout = 10000
+                            connection.readTimeout = 30000
+                            connection.connect()
                             
-                            // Listener pour quand le fichier est prêt
-                            mediaPlayer.setOnPreparedListener {
-                                android.util.Log.d("MusicPlayer", "Media prepared, starting playback")
-                                it.start()
-                                currentlyPlaying = filename
-                                scope.launch {
-                                    snackbar.showSnackbar("▶ Lecture: ${filename.take(30)}")
+                            if (connection.responseCode == 200) {
+                                // Créer fichier temporaire
+                                val tempFile = java.io.File.createTempFile("music_", ".mp3", android.os.Environment.getExternalStorageDirectory())
+                                
+                                // Télécharger
+                                connection.inputStream.use { input ->
+                                    tempFile.outputStream().use { output ->
+                                        input.copyTo(output)
+                                    }
+                                }
+                                
+                                android.util.Log.d("MusicPlayer", "Downloaded to: ${tempFile.absolutePath}")
+                                
+                                withContext(Dispatchers.Main) {
+                                    snackbar.showSnackbar("⏳ Préparation...")
+                                    
+                                    try {
+                                        mediaPlayer.setDataSource(tempFile.absolutePath)
+                                        
+                                        mediaPlayer.setOnPreparedListener {
+                                            android.util.Log.d("MusicPlayer", "Media prepared, starting")
+                                            it.start()
+                                            currentlyPlaying = filename
+                                            scope.launch {
+                                                snackbar.showSnackbar("▶ Lecture: ${filename.take(25)}...")
+                                            }
+                                        }
+                                        
+                                        mediaPlayer.setOnErrorListener { mp, what, extra ->
+                                            android.util.Log.e("MusicPlayer", "Error: what=$what, extra=$extra")
+                                            scope.launch {
+                                                snackbar.showSnackbar("❌ Erreur: code $what/$extra")
+                                            }
+                                            currentlyPlaying = null
+                                            tempFile.delete()
+                                            true
+                                        }
+                                        
+                                        mediaPlayer.setOnCompletionListener {
+                                            android.util.Log.d("MusicPlayer", "Playback completed")
+                                            currentlyPlaying = null
+                                            tempFile.delete()
+                                        }
+                                        
+                                        mediaPlayer.prepareAsync()
+                                        
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("MusicPlayer", "Error setting data source", e)
+                                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                                        currentlyPlaying = null
+                                        tempFile.delete()
+                                    }
+                                }
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    snackbar.showSnackbar("❌ HTTP ${connection.responseCode}")
                                 }
                             }
-                            
-                            // Listener pour les erreurs
-                            mediaPlayer.setOnErrorListener { mp, what, extra ->
-                                android.util.Log.e("MusicPlayer", "Error: what=$what, extra=$extra")
-                                scope.launch {
-                                    snackbar.showSnackbar("❌ Erreur MediaPlayer: code $what/$extra")
-                                }
-                                currentlyPlaying = null
-                                true // Return true pour gérer l'erreur
-                            }
-                            
-                            // Préparer de façon asynchrone (non bloquant)
-                            mediaPlayer.prepareAsync()
-                            android.util.Log.d("MusicPlayer", "prepareAsync() called")
-                            
                         } catch (e: Exception) {
-                            android.util.Log.e("MusicPlayer", "Error setting data source", e)
-                            snackbar.showSnackbar("❌ Erreur: ${e.javaClass.simpleName} - ${e.message ?: "Inconnue"}")
-                            currentlyPlaying = null
+                            android.util.Log.e("MusicPlayer", "Download failed", e)
+                            withContext(Dispatchers.Main) {
+                                snackbar.showSnackbar("❌ Téléchargement: ${e.message}")
+                            }
                         }
                     }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("MusicPlayer", "Error in playAudio", e)
                 withContext(Dispatchers.Main) {
-                    snackbar.showSnackbar("❌ Erreur globale: ${e.message}")
+                    snackbar.showSnackbar("❌ Erreur: ${e.message}")
                     currentlyPlaying = null
                 }
             }
