@@ -2494,7 +2494,7 @@ app.get('/api/music/uploads', (req, res) => {
 // GET /api/music/playlists - Liste des playlists
 app.get('/api/music/playlists', (req, res) => {
   try {
-    const playlistsPath = path.join(DATA_DIR, 'playlists.json');
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
     
     if (!fs.existsSync(playlistsPath)) {
       return res.json({ playlists: [] });
@@ -2516,7 +2516,7 @@ app.post('/api/music/playlists', (req, res) => {
       return res.status(400).json({ error: 'Name required' });
     }
     
-    const playlistsPath = path.join(DATA_DIR, 'playlists.json');
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
     let playlists = [];
     
     if (fs.existsSync(playlistsPath)) {
@@ -2544,7 +2544,7 @@ app.post('/api/music/playlists', (req, res) => {
 app.delete('/api/music/playlists/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const playlistsPath = path.join(DATA_DIR, 'playlists.json');
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
     
     if (!fs.existsSync(playlistsPath)) {
       return res.status(404).json({ error: 'No playlists found' });
@@ -2571,7 +2571,7 @@ app.post('/api/music/playlists/:id/songs', (req, res) => {
       return res.status(400).json({ error: 'Filename required' });
     }
     
-    const playlistsPath = path.join(DATA_DIR, 'playlists.json');
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
     
     if (!fs.existsSync(playlistsPath)) {
       return res.status(404).json({ error: 'No playlists found' });
@@ -2600,7 +2600,7 @@ app.post('/api/music/playlists/:id/songs', (req, res) => {
 app.delete('/api/music/playlists/:id/songs/:filename', (req, res) => {
   try {
     const { id, filename } = req.params;
-    const playlistsPath = path.join(DATA_DIR, 'playlists.json');
+    const playlistsPath = path.join(__dirname, '../data/playlists.json');
     
     if (!fs.existsSync(playlistsPath)) {
       return res.status(404).json({ error: 'No playlists found' });
@@ -2836,7 +2836,7 @@ app.get('/api/admin/dashboard-url', (req, res) => {
     }
     
     // Lire l'URL depuis app-config.json
-    const appConfigPath = path.join(DATA_DIR, 'app-config.json');
+    const appConfigPath = path.join(__dirname, '../data/app-config.json');
     let dashboardUrl = 'http://88.174.155.230:33002'; // Valeur par défaut
     
     if (fs.existsSync(appConfigPath)) {
@@ -2880,7 +2880,7 @@ app.put('/api/admin/dashboard-url', (req, res) => {
     }
     
     // Sauvegarder dans app-config.json
-    const appConfigPath = path.join(DATA_DIR, 'app-config.json');
+    const appConfigPath = path.join(__dirname, '../data/app-config.json');
     const appConfig = { dashboardUrl };
     
     fs.writeFileSync(appConfigPath, JSON.stringify(appConfig, null, 2), 'utf8');
@@ -2897,7 +2897,7 @@ app.put('/api/admin/dashboard-url', (req, res) => {
 app.get('/api/music/stream/:filename', (req, res) => {
   try {
     const filename = decodeURIComponent(req.params.filename);
-    const filePath = path.join(DATA_DIR, 'uploads', filename);
+    const filePath = path.join(__dirname, '../data/uploads', filename);
     
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found' });
