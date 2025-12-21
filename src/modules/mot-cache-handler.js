@@ -68,18 +68,34 @@ async function handleMessage(message) {
       console.error('[MOT-CACHE] Error adding reaction:', err.message);
     }
 
-    // Envoyer un message privé à l'utilisateur
-    try {
-      await message.author.send(
-        `🔍 **Tu as trouvé une lettre cachée !**\n\n` +
-        `Lettre: **${letter}**\n` +
-        `Tes lettres: ${motCache.collections[message.author.id].join(' ')}\n` +
-        `Progression: ${motCache.collections[message.author.id].length}/${targetWord.length}\n\n` +
-        `💡 Utilise \`/mot-cache deviner <mot>\` quand tu penses avoir trouvé !`
-      );
-    } catch (err) {
-      // L'utilisateur a peut-être bloqué les MPs
-      console.log(`[MOT-CACHE] Cannot DM user ${message.author.id}`);
+    // Envoyer la notification dans le salon configuré (au lieu de MP)
+    if (motCache.letterNotificationChannel) {
+      try {
+        const notifChannel = message.guild.channels.cache.get(motCache.letterNotificationChannel);
+        if (notifChannel) {
+          const notifMessage = await notifChannel.send(
+            `🔍 **${message.author} a trouvé une lettre cachée !**\n\n` +
+            `Lettre: **${letter}**\n` +
+            `Progression: ${motCache.collections[message.author.id].length}/${targetWord.length}\n` +
+            `💡 Utilise \`/mot-cache deviner <mot>\` quand tu penses avoir trouvé !`
+          );
+          
+          // Supprimer après 15 secondes
+          setTimeout(async () => {
+            try {
+              await notifMessage.delete();
+            } catch (e) {
+              console.log('[MOT-CACHE] Could not delete notification message');
+            }
+          }, 15000);
+        } else {
+          console.warn(`[MOT-CACHE] Notification channel ${motCache.letterNotificationChannel} not found`);
+        }
+      } catch (err) {
+        console.error('[MOT-CACHE] Error sending notification:', err.message);
+      }
+    } else {
+      console.warn('[MOT-CACHE] No letterNotificationChannel configured');
     }
 
     console.log(`[MOT-CACHE] Letter '${letter}' given to ${message.author.username} (${motCache.collections[message.author.id].length}/${targetWord.length})`);

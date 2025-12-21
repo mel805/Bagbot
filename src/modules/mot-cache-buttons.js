@@ -132,6 +132,60 @@ async function handleMotCacheButton(interaction) {
     return interaction.showModal(modal);
   }
 
+  // Salons de jeu (où les lettres apparaissent)
+  if (buttonId === 'motcache_gamechannels') {
+    const modal = new ModalBuilder()
+      .setCustomId('motcache_modal_gamechannels')
+      .setTitle('📋 Salons de jeu');
+
+    const channelsInput = new TextInputBuilder()
+      .setCustomId('channels')
+      .setLabel('IDs des salons (séparés par des virgules)')
+      .setStyle(TextInputStyle.Paragraph)
+      .setPlaceholder('Ex: 123456789,987654321\nVide = tous les salons')
+      .setRequired(false)
+      .setValue(motCache.allowedChannels?.join(',') || '');
+
+    modal.addComponents(new ActionRowBuilder().addComponents(channelsInput));
+    return interaction.showModal(modal);
+  }
+
+  // Salon notification lettres (où on annonce les lettres trouvées)
+  if (buttonId === 'motcache_letternotifchannel') {
+    const modal = new ModalBuilder()
+      .setCustomId('motcache_modal_letternotifchannel')
+      .setTitle('💬 Salon notifications lettres');
+
+    const channelInput = new TextInputBuilder()
+      .setCustomId('channel')
+      .setLabel('ID du salon')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ex: 123456789')
+      .setRequired(false)
+      .setValue(motCache.letterNotificationChannel || '');
+
+    modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
+    return interaction.showModal(modal);
+  }
+
+  // Salon notification gagnant
+  if (buttonId === 'motcache_winnernotifchannel') {
+    const modal = new ModalBuilder()
+      .setCustomId('motcache_modal_winnernotifchannel')
+      .setTitle('📢 Salon notifications gagnant');
+
+    const channelInput = new TextInputBuilder()
+      .setCustomId('channel')
+      .setLabel('ID du salon')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Ex: 123456789')
+      .setRequired(false)
+      .setValue(motCache.notificationChannel || '');
+
+    modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
+    return interaction.showModal(modal);
+  }
+
   // Reset jeu
   if (buttonId === 'motcache_reset') {
     motCache.collections = {};
@@ -227,6 +281,83 @@ async function handleMotCacheModal(interaction) {
 
     return interaction.reply({
       content: `✅ Emoji défini : ${emoji}`,
+      ephemeral: true
+    });
+  }
+
+  if (modalId === 'motcache_modal_gamechannels') {
+    const channelsStr = interaction.fields.getTextInputValue('channels').trim();
+    
+    if (channelsStr === '') {
+      // Vide = tous les salons
+      motCache.allowedChannels = [];
+    } else {
+      // Parser les IDs
+      const channelIds = channelsStr.split(',').map(id => id.trim()).filter(id => id.length > 0);
+      motCache.allowedChannels = channelIds;
+    }
+    
+    guildConfig.motCache = motCache;
+    await writeConfig(config);
+
+    return interaction.reply({
+      content: `✅ Salons de jeu configurés : ${motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous les salons'}`,
+      ephemeral: true
+    });
+  }
+
+  if (modalId === 'motcache_modal_letternotifchannel') {
+    const channelId = interaction.fields.getTextInputValue('channel').trim();
+    
+    if (channelId === '') {
+      motCache.letterNotificationChannel = null;
+    } else {
+      // Vérifier que le salon existe
+      const channel = interaction.guild.channels.cache.get(channelId);
+      if (!channel) {
+        return interaction.reply({
+          content: `❌ Salon introuvable : ${channelId}`,
+          ephemeral: true
+        });
+      }
+      motCache.letterNotificationChannel = channelId;
+    }
+    
+    guildConfig.motCache = motCache;
+    await writeConfig(config);
+
+    return interaction.reply({
+      content: motCache.letterNotificationChannel 
+        ? `✅ Salon notifications lettres : <#${motCache.letterNotificationChannel}>` 
+        : '✅ Salon notifications lettres désactivé',
+      ephemeral: true
+    });
+  }
+
+  if (modalId === 'motcache_modal_winnernotifchannel') {
+    const channelId = interaction.fields.getTextInputValue('channel').trim();
+    
+    if (channelId === '') {
+      motCache.notificationChannel = null;
+    } else {
+      // Vérifier que le salon existe
+      const channel = interaction.guild.channels.cache.get(channelId);
+      if (!channel) {
+        return interaction.reply({
+          content: `❌ Salon introuvable : ${channelId}`,
+          ephemeral: true
+        });
+      }
+      motCache.notificationChannel = channelId;
+    }
+    
+    guildConfig.motCache = motCache;
+    await writeConfig(config);
+
+    return interaction.reply({
+      content: motCache.notificationChannel 
+        ? `✅ Salon notifications gagnant : <#${motCache.notificationChannel}>` 
+        : '✅ Salon notifications gagnant désactivé',
       ephemeral: true
     });
   }

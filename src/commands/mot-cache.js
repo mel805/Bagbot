@@ -151,8 +151,9 @@ module.exports = {
           { name: '📅 Lettres/jour', value: motCache.mode === 'programmed' ? `${motCache.lettersPerDay}` : 'N/A', inline: true },
           { name: '📊 Probabilité', value: motCache.mode === 'probability' ? `${motCache.probability}%` : 'N/A', inline: true },
           { name: '📏 Longueur min', value: `${motCache.minMessageLength} caractères`, inline: true },
-          { name: '📋 Salons', value: motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
-          { name: '📢 Notifs', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true }
+          { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
+          { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
+          { name: '📢 Salon gagnant', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true }
         )
         .setColor('#9b59b6');
 
@@ -190,12 +191,16 @@ module.exports = {
 
       const row3 = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-          .setCustomId('motcache_channels')
+          .setCustomId('motcache_gamechannels')
           .setLabel('📋 Salons jeu')
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
-          .setCustomId('motcache_notifchannel')
-          .setLabel('📢 Salon notifs')
+          .setCustomId('motcache_letternotifchannel')
+          .setLabel('💬 Salon lettres')
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId('motcache_winnernotifchannel')
+          .setLabel('📢 Salon gagnant')
           .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId('motcache_reset')
