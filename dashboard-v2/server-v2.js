@@ -2491,6 +2491,26 @@ app.get('/api/music/uploads', (req, res) => {
   }
 });
 
+// POST /api/music/upload - Upload un fichier audio depuis l'app
+app.post('/api/music/upload', upload.single('audio'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    console.log('✅ Audio uploaded:', req.file.filename);
+    res.json({ 
+      success: true, 
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size
+    });
+  } catch (error) {
+    console.error('Error uploading audio:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/music/playlists - Liste des playlists
 app.get('/api/music/playlists', (req, res) => {
   try {
@@ -2626,9 +2646,12 @@ app.delete('/api/music/playlists/:id/songs/:filename', (req, res) => {
 // GET /api/dashboard/stats - Statistiques complètes du serveur
 app.get('/api/dashboard/stats', async (req, res) => {
   try {
-    // Pas de client Discord, utiliser les données du config.json
-    let totalMembers = 0;
-    let totalHumans = 0;
+    // Récupérer les membres actuels via Discord REST API
+    const membersData = await getMembers();
+    const currentMemberIds = Object.keys(membersData.names || membersData);
+    
+    let totalMembers = currentMemberIds.length;
+    let totalHumans = totalMembers; // Par défaut
     let totalBots = 0;
     let ecoUsers = 0;
     let levelUsers = 0;
@@ -2637,20 +2660,20 @@ app.get('/api/dashboard/stats', async (req, res) => {
       const configs = readConfig();
       const guildConfig = configs.guilds[GUILD] || {};
       
-      // Economy users
+      // Economy users (filtrés)
       if (guildConfig.economy && guildConfig.economy.balances) {
-        ecoUsers = Object.keys(guildConfig.economy.balances).length;
+        ecoUsers = Object.keys(guildConfig.economy.balances).filter(uid => 
+          currentMemberIds.includes(uid)
+        ).length;
       }
       
-      // Level users
-      if (guildConfig.levels && guildConfig.levels.data) {
-        levelUsers = Object.keys(guildConfig.levels.data).length;
+      // Level users (filtrés) - CORRECTION: levels.users au lieu de levels.data
+      if (guildConfig.levels && guildConfig.levels.users) {
+        levelUsers = Object.keys(guildConfig.levels.users).filter(uid => 
+          currentMemberIds.includes(uid)
+        ).length;
       }
       
-      // Estimation du nombre de membres (pas de client Discord connecté)
-      // On peut utiliser le max entre eco et levels users
-      totalHumans = Math.max(ecoUsers, levelUsers);
-      totalMembers = totalHumans;
     } catch (e) {
       console.error('Error reading config data:', e);
     }

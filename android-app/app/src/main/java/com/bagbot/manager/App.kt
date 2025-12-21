@@ -1843,16 +1843,24 @@ fun MusicScreen(
                         mediaPlayer.reset()
                     }
                     
-                    // Jouer la nouvelle musique
-                    val url = "$baseUrl/api/music/stream/${java.net.URLEncoder.encode(filename, "UTF-8")}"
-                    mediaPlayer.setDataSource(url)
-                    mediaPlayer.prepare()
-                    mediaPlayer.start()
-                    currentlyPlaying = filename
-                    snackbar.showSnackbar("▶ Lecture: $filename")
+                    withContext(Dispatchers.IO) {
+                        // Jouer la nouvelle musique
+                        val url = "$baseUrl/api/music/stream/${java.net.URLEncoder.encode(filename, "UTF-8")}"
+                        mediaPlayer.setDataSource(url)
+                        mediaPlayer.prepare() // Bloquant mais dans IO dispatcher
+                    }
+                    
+                    withContext(Dispatchers.Main) {
+                        mediaPlayer.start()
+                        currentlyPlaying = filename
+                        snackbar.showSnackbar("▶ Lecture: $filename")
+                    }
                 }
             } catch (e: Exception) {
-                snackbar.showSnackbar("❌ ${e.message}")
+                withContext(Dispatchers.Main) {
+                    snackbar.showSnackbar("❌ Erreur lecture: ${e.message}")
+                    currentlyPlaying = null
+                }
             }
         }
     }
@@ -1919,23 +1927,47 @@ fun MusicScreen(
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF9C27B0))
                             ) {
                                 Column(Modifier.padding(16.dp)) {
-                                    Icon(
-                                        Icons.Default.MusicNote,
-                                        null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                "🎵 Musiques Uploadées",
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                "${uploads.size} fichier(s)",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Color(0xFFE1BEE7)
+                                            )
+                                        }
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(48.dp)
+                                        )
+                                    }
+                                    
+                                    Spacer(Modifier.height(12.dp))
+                                    Divider(color = Color.White.copy(alpha = 0.3f))
+                                    Spacer(Modifier.height(12.dp))
+                                    
                                     Text(
-                                        "🎵 Musiques Uploadées",
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        "💡 Pour importer de nouvelles musiques :",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color(0xFFE1BEE7),
+                                        fontWeight = FontWeight.SemiBold
                                     )
+                                    Spacer(Modifier.height(4.dp))
                                     Text(
-                                        "${uploads.size} fichier(s)",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Color(0xFFE1BEE7)
+                                        "→ Utilisez le dashboard web : http://88.174.155.230:33002/music",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.9f)
                                     )
                                 }
                             }
