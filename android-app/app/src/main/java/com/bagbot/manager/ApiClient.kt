@@ -69,5 +69,30 @@ class ApiClient(private val store: SettingsStore) {
         if (!response.isSuccessful) throw IOException("HTTP ${response.code}: ${response.body?.string()}")
         return response.body?.string() ?: "{}"
     }
+    
+    fun uploadFile(path: String, fileName: String, fileBytes: ByteArray, fieldName: String = "file"): String {
+        val url = "${store.getBaseUrl()}$path"
+        
+        val requestBody = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart(
+                fieldName,
+                fileName,
+                fileBytes.toRequestBody("audio/*".toMediaType())
+            )
+            .build()
+        
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody)
+            .apply { authHeader()?.let { addHeader("Authorization", it) } }
+            .build()
+        
+        val response = client.newCall(request).execute()
+        if (!response.isSuccessful) {
+            throw IOException("HTTP ${response.code}: ${response.body?.string()}")
+        }
+        return response.body?.string() ?: "{}"
+    }
 
 }

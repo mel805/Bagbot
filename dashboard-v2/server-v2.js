@@ -2413,28 +2413,28 @@ app.put('/api/configs/:section', express.json(), (req, res) => {
   const updates = req.body;
   
   try {
-    const fs = require('fs');
-    const configPath = CONFIG || './data/guild-config.json';
+    // Utiliser readConfig/writeConfig pour manipuler la bonne structure
+    const config = readConfig();
     
-    // Lire la config actuelle
-    let config = {};
-    if (fs.existsSync(configPath)) {
-      config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    
+    // Mettre à jour la section spécifique
+    if (!config.guilds[GUILD][section]) {
+      config.guilds[GUILD][section] = {};
     }
     
-    // Mettre à jour la section
-    if (!config[section]) {
-      config[section] = {};
+    // Merger les updates avec la structure existante
+    config.guilds[GUILD][section] = { ...config.guilds[GUILD][section], ...updates };
+    
+    // Sauvegarder avec writeConfig
+    if (writeConfig(config)) {
+      console.log(`✅ Config section '${section}' updated by ${userData.username} (${userData.userId})`);
+      res.json({ success: true, section, config: config.guilds[GUILD][section] });
+    } else {
+      console.error(`❌ Failed to write config for section '${section}'`);
+      res.status(500).json({ error: 'Failed to write config' });
     }
-    
-    // Merger les updates
-    config[section] = { ...config[section], ...updates };
-    
-    // Sauvegarder
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8');
-    
-    console.log(`✅ Config section '${section}' updated by ${userData.username}`);
-    res.json({ success: true, section, config: config[section] });
   } catch (error) {
     console.error('❌ Config update error:', error);
     res.status(500).json({ error: error.message });

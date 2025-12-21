@@ -5,6 +5,10 @@ package com.bagbot.manager
 import android.net.Uri
 import android.util.Log
 import android.media.MediaPlayer
+import android.content.Context
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1743,11 +1747,44 @@ fun MusicScreen(
     snackbar: SnackbarHostState,
     baseUrl: String
 ) {
+    val context = LocalContext.current
     var selectedTab by remember { mutableStateOf(0) }
     var uploads by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
     var currentlyPlaying by remember { mutableStateOf<String?>(null) }
+    var isUploading by remember { mutableStateOf(false) }
     val mediaPlayer = remember { MediaPlayer() }
+    
+    // File picker pour upload
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                isUploading = true
+                withContext(Dispatchers.IO) {
+                    try {
+                        val uploaded = uploadAudioFile(context, api, uri)
+                        withContext(Dispatchers.Main) {
+                            if (uploaded) {
+                                snackbar.showSnackbar("✅ Fichier uploadé !")
+                                loadUploads()
+                            } else {
+                                snackbar.showSnackbar("❌ Échec upload")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("MusicUpload", "Error uploading", e)
+                        withContext(Dispatchers.Main) {
+                            snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                        }
+                    } finally {
+                        withContext(Dispatchers.Main) { isUploading = false }
+                    }
+                }
+            }
+        }
+    }
     
     DisposableEffect(Unit) {
         onDispose {
@@ -1901,18 +1938,29 @@ fun MusicScreen(
                                     Divider(color = Color.White.copy(alpha = 0.3f))
                                     Spacer(Modifier.height(12.dp))
                                     
-                                    Text(
-                                        "💡 Pour importer de nouvelles musiques :",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color(0xFFE1BEE7),
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        "→ Utilisez le dashboard web : http://88.174.155.230:33002/music",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = Color.White.copy(alpha = 0.9f)
-                                    )
+                                    Button(
+                                        onClick = {
+                                            if (!isUploading) {
+                                                filePickerLauncher.launch("audio/*")
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                                        enabled = !isUploading
+                                    ) {
+                                        if (isUploading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(24.dp),
+                                                color = Color(0xFF9C27B0)
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("Upload en cours...", color = Color.Black)
+                                        } else {
+                                            Icon(Icons.Default.Upload, null, tint = Color(0xFF9C27B0))
+                                            Spacer(Modifier.width(8.dp))
+                                            Text("📁 Importer un fichier audio", color = Color.Black, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -2011,6 +2059,42 @@ fun MusicScreen(
                 // Onglet Playlists
                 PlaylistsTab(api, json, scope, snackbar, uploads)
             }
+        }
+    }
+}
+
+// Fonction pour uploader un fichier audio
+suspend fun uploadAudioFile(context: Context, api: ApiClient, uri: Uri): Boolean {
+    return withContext(Dispatchers.IO) {
+        try {
+            val contentResolver = context.contentResolver
+            val inputStream = contentResolver.openInputStream(uri) ?: return@withContext false
+            
+            // Lire le nom du fichier
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            val fileName = cursor?.use {
+                if (it.moveToFirst()) {
+                    val nameIndex = it.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+                    if (nameIndex >= 0) it.getString(nameIndex) else "audio.mp3"
+                } else "audio.mp3"
+            } ?: "audio.mp3"
+            
+            android.util.Log.d("MusicUpload", "Uploading file: $fileName")
+            
+            // Lire les bytes
+            val bytes = inputStream.readBytes()
+            inputStream.close()
+            
+            android.util.Log.d("MusicUpload", "File size: ${bytes.size} bytes")
+            
+            // Envoyer via multipart
+            val response = api.uploadFile("/api/music/upload", fileName, bytes, "audio")
+            android.util.Log.d("MusicUpload", "Upload response: $response")
+            
+            true
+        } catch (e: Exception) {
+            android.util.Log.e("MusicUpload", "Upload failed", e)
+            false
         }
     }
 }
