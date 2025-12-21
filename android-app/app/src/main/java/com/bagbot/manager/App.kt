@@ -4,6 +4,7 @@ package com.bagbot.manager
 
 import android.net.Uri
 import android.util.Log
+import android.media.MediaPlayer
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -1178,7 +1179,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 api = api,
                                 json = json,
                                 scope = scope,
-                                snackbar = snackbar
+                                snackbar = snackbar,
+                                baseUrl = baseUrl
                             )
                         }
                         tab == 3 && isFounder -> {
@@ -1810,11 +1812,50 @@ fun MusicScreen(
     api: ApiClient,
     json: Json,
     scope: kotlinx.coroutines.CoroutineScope,
-    snackbar: SnackbarHostState
+    snackbar: SnackbarHostState,
+    baseUrl: String
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var uploads by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    var currentlyPlaying by remember { mutableStateOf<String?>(null) }
+    val mediaPlayer = remember { MediaPlayer() }
+    
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaPlayer.release()
+        }
+    }
+    
+    fun playAudio(filename: String, baseUrl: String) {
+        scope.launch {
+            try {
+                if (currentlyPlaying == filename) {
+                    // Stop si déjà en lecture
+                    mediaPlayer.stop()
+                    mediaPlayer.reset()
+                    currentlyPlaying = null
+                    snackbar.showSnackbar("⏹ Arrêté")
+                } else {
+                    // Arrêter la musique actuelle
+                    if (mediaPlayer.isPlaying) {
+                        mediaPlayer.stop()
+                        mediaPlayer.reset()
+                    }
+                    
+                    // Jouer la nouvelle musique
+                    val url = "$baseUrl/api/music/stream/${java.net.URLEncoder.encode(filename, "UTF-8")}"
+                    mediaPlayer.setDataSource(url)
+                    mediaPlayer.prepare()
+                    mediaPlayer.start()
+                    currentlyPlaying = filename
+                    snackbar.showSnackbar("▶ Lecture: $filename")
+                }
+            } catch (e: Exception) {
+                snackbar.showSnackbar("❌ ${e.message}")
+            }
+        }
+    }
     
     fun loadUploads() {
         scope.launch {
@@ -1960,6 +2001,14 @@ fun MusicScreen(
                                                     filename,
                                                     color = Color.White,
                                                     style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                            IconButton(onClick = { playAudio(filename, baseUrl) }) {
+                                                Icon(
+                                                    if (currentlyPlaying == filename) Icons.Default.Stop else Icons.Default.PlayArrow,
+                                                    null,
+                                                    tint = if (currentlyPlaying == filename) Color.Red else Color(0xFF9C27B0),
+                                                    modifier = Modifier.size(28.dp)
                                                 )
                                             }
                                         }
