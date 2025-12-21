@@ -18,6 +18,7 @@ function getDefaultMotCache() {
     mode: 'programmed', // 'programmed' ou 'probability'
     lettersPerDay: 1,
     probability: 5, // %
+    reward: 5000, // BAG$
     emoji: '🔍',
     minMessageLength: 15,
     allowedChannels: [], // vide = tous
@@ -40,6 +41,7 @@ function buildPublicPanelEmbed(motCache) {
   const wordLen = (motCache.targetWord || '').length;
   const modeLabel = motCache.mode === 'probability' ? `🎲 Probabilité (${motCache.probability || 5}%)` : `📅 Programmé (${motCache.lettersPerDay || 1} lettre(s)/jour)`;
   const channelsLabel = motCache.allowedChannels?.length ? `${motCache.allowedChannels.length} salon(s)` : 'Tous les salons';
+  const reward = Number.isFinite(Number(motCache.reward)) ? Number(motCache.reward) : 5000;
 
   return new EmbedBuilder()
     .setTitle('🔍 Jeu — Mot caché')
@@ -55,6 +57,7 @@ function buildPublicPanelEmbed(motCache) {
       { name: '🎯 Mot', value: enabled ? `Mot de **${wordLen}** lettres` : 'Non défini', inline: true },
       { name: '🎲 Mode', value: modeLabel, inline: true },
       { name: '📋 Salons', value: channelsLabel, inline: true },
+      { name: '💰 Récompense', value: `${reward} BAG$`, inline: true },
       { name: '📏 Longueur min', value: `${motCache.minMessageLength || 15} caractères`, inline: true },
       { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
       { name: '📢 Salon gagnant', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true },
@@ -78,6 +81,7 @@ function buildPublicPanelComponents() {
 }
 
 function buildAdminConfigEmbed(motCache) {
+  const reward = Number.isFinite(Number(motCache.reward)) ? Number(motCache.reward) : 5000;
   return new EmbedBuilder()
     .setTitle('⚙️ Configuration — Mot caché')
     .setDescription('Paramètres du jeu (admin uniquement).')
@@ -88,6 +92,7 @@ function buildAdminConfigEmbed(motCache) {
       { name: '🎲 Mode', value: motCache.mode === 'programmed' ? '📅 Programmé' : '🎲 Probabilité', inline: true },
       { name: '📅 Lettres/jour', value: motCache.mode === 'programmed' ? `${motCache.lettersPerDay || 1}` : 'N/A', inline: true },
       { name: '📊 Probabilité', value: motCache.mode === 'probability' ? `${motCache.probability || 5}%` : 'N/A', inline: true },
+      { name: '💰 Récompense', value: `${reward} BAG$`, inline: true },
       { name: '📏 Longueur min', value: `${motCache.minMessageLength || 15} caractères`, inline: true },
       { name: '📋 Salons jeu', value: motCache.allowedChannels?.length ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
       { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
@@ -148,7 +153,14 @@ function buildAdminConfigComponents(motCache) {
       .setStyle(ButtonStyle.Danger),
   );
 
-  return [row1, row2, row3];
+  const row4 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('motcache_reward')
+      .setLabel('💰 Récompense')
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return [row1, row2, row3, row4];
 }
 
 async function ensureGuildConfig(config, guildId) {
@@ -247,6 +259,37 @@ module.exports = {
       const id = interaction.customId;
 
       if (id === 'motcache_enter') {
+        const config = await readConfig();
+        const guildConfig = await ensureGuildConfig(config, guildId);
+        const motCache = mergeMotCache(guildConfig.motCache);
+
+        const letters = motCache.collections?.[interaction.user.id] || [];
+        const enabled = !!motCache.enabled && !!motCache.targetWord;
+        const total = (motCache.targetWord || '').length || 0;
+
+        const infoEmbed = new EmbedBuilder()
+          .setTitle('🔍 Mot caché — Tes lettres')
+          .setDescription(
+            enabled
+              ? `📊 Progression: **${letters.length}/${total}**\n\n**Lettres:** ${letters.length ? letters.join(' ') : 'Aucune'}`
+              : '⏸️ Le jeu n’est pas actif actuellement.'
+          )
+          .setColor('#9b59b6')
+          .setFooter({ text: 'Clique ensuite sur "Entrer le mot".' });
+
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('motcache_open_modal')
+            .setLabel('📝 Entrer le mot')
+            .setStyle(ButtonStyle.Primary)
+            .setDisabled(!enabled),
+        );
+
+        await interaction.reply({ embeds: [infoEmbed], components: [row], ephemeral: true });
+        return true;
+      }
+
+      if (id === 'motcache_open_modal') {
         const modal = new ModalBuilder()
           .setCustomId('motcache_modal_guess')
           .setTitle('📝 Entrer le mot');
@@ -375,6 +418,20 @@ module.exports = {
           return true;
         }
 
+        if (id === 'motcache_reward') {
+          const modal = new ModalBuilder().setCustomId('motcache_modal_reward').setTitle('💰 Récompense');
+          const rewardInput = new TextInputBuilder()
+            .setCustomId('reward')
+            .setLabel('Récompense (BAG$)')
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder('Ex: 5000')
+            .setRequired(true)
+            .setValue(String(Number.isFinite(Number(motCache.reward)) ? Number(motCache.reward) : 5000));
+          modal.addComponents(new ActionRowBuilder().addComponents(rewardInput));
+          await interaction.showModal(modal);
+          return true;
+        }
+
         if (id === 'motcache_gamechannels') {
           const modal = new ModalBuilder().setCustomId('motcache_modal_gamechannels').setTitle('📋 Salons de jeu');
           const channelsInput = new TextInputBuilder()
@@ -478,7 +535,7 @@ module.exports = {
         const userId = interaction.user.id;
 
         if (guessedWord === target) {
-          const reward = 5000;
+          const reward = Number.isFinite(Number(motCache.reward)) ? Number(motCache.reward) : 5000;
 
           if (!guildConfig.economy) guildConfig.economy = { balances: {} };
           if (!guildConfig.economy.balances) guildConfig.economy.balances = {};
@@ -515,7 +572,12 @@ module.exports = {
           return true;
         }
 
-        await interaction.reply({ content: `❌ Ce n'est pas le bon mot. Continue !`, ephemeral: true });
+        const letters = motCache.collections?.[userId] || [];
+        const total = (motCache.targetWord || '').length || 0;
+        await interaction.reply({
+          content: `❌ Ce n'est pas le bon mot. Continue !\n📊 ${letters.length}/${total} • Lettres: ${letters.length ? letters.join(' ') : 'Aucune'}`,
+          ephemeral: true
+        });
         return true;
       }
 
@@ -588,6 +650,21 @@ module.exports = {
         await writeConfig(config);
         await refreshPublicPanel(interaction.client, guildId);
         await interaction.reply({ content: `✅ Emoji défini : ${emoji}`, ephemeral: true });
+        return true;
+      }
+
+      if (modalId === 'motcache_modal_reward') {
+        const reward = parseInt(interaction.fields.getTextInputValue('reward'), 10);
+        if (Number.isNaN(reward) || reward < 0 || reward > 1_000_000_000) {
+          await interaction.reply({ content: '❌ La récompense doit être un nombre valide.', ephemeral: true });
+          return true;
+        }
+        motCache.reward = reward;
+        guildConfig.motCache = motCache;
+        config.guilds[guildId] = guildConfig;
+        await writeConfig(config);
+        await refreshPublicPanel(interaction.client, guildId);
+        await interaction.reply({ content: `✅ Récompense définie : **${reward} BAG$**`, ephemeral: true });
         return true;
       }
 

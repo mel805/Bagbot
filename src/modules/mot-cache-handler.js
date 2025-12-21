@@ -76,11 +76,13 @@ async function handleMessage(message) {
       try {
         const notifChannel = message.guild.channels.cache.get(motCache.letterNotificationChannel);
         if (notifChannel) {
+          const userLetters = motCache.collections?.[message.author.id] || [];
           const notifMessage = await notifChannel.send(
             `🔍 **${message.author} a trouvé une lettre cachée !**\n\n` +
             `Lettre: **${letter}**\n` +
+            `Lettres: ${userLetters.length ? `**${userLetters.join(' ')}**` : '**Aucune**'}\n` +
             `Progression: ${motCache.collections[message.author.id].length}/${targetWord.length}\n` +
-            `💡 Utilise \`/mot-cache deviner <mot>\` quand tu penses avoir trouvé !`
+            `💡 Utilise le panneau **Mot caché** puis **Entrer le mot** quand tu penses avoir trouvé !`
           );
           
           // Supprimer après 15 secondes

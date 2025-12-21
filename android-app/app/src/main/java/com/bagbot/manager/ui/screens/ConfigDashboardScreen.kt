@@ -3564,6 +3564,7 @@ private fun MotCacheConfigTab(
     var mode by remember { mutableStateOf(motCache?.str("mode") ?: "programmed") }
     var lettersPerDay by remember { mutableIntStateOf(motCache?.int("lettersPerDay") ?: 1) }
     var probability by remember { mutableIntStateOf(motCache?.int("probability") ?: 5) }
+    var reward by remember { mutableIntStateOf(motCache?.int("reward") ?: 5000) }
     var emoji by remember { mutableStateOf(motCache?.str("emoji") ?: "🔍") }
     var minMessageLength by remember { mutableIntStateOf(motCache?.int("minMessageLength") ?: 15) }
 
@@ -3661,6 +3662,14 @@ private fun MotCacheConfigTab(
                 )
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
+                    value = reward.toString(),
+                    onValueChange = { v -> reward = v.filter { it.isDigit() }.toIntOrNull() ?: 5000 },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Récompense (BAG$)") },
+                    keyboardOptions = androidx.compose.ui.text.input.KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
                     value = minMessageLength.toString(),
                     onValueChange = { v -> minMessageLength = v.filter { it.isDigit() }.toIntOrNull() ?: 15 },
                     modifier = Modifier.fillMaxWidth(),
@@ -3740,6 +3749,7 @@ private fun MotCacheConfigTab(
                                     put("mode", mode)
                                     put("lettersPerDay", lettersPerDay.coerceIn(1, 20))
                                     put("probability", probability.coerceIn(0, 100))
+                                    put("reward", reward.coerceIn(0, 1_000_000_000))
                                     put("emoji", emoji.trim().ifBlank { "🔍" })
                                     put("minMessageLength", minMessageLength.coerceAtLeast(1))
                                     put("allowedChannels", JsonArray(allowedChannels.map { JsonPrimitive(it) }))
