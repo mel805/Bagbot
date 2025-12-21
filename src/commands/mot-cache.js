@@ -2,6 +2,9 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const { readConfig, writeConfig } = require('../storage/jsonStore');
 
 module.exports = {
+  name: 'mot-cache',
+  description: '🔍 Jeu du mot caché - Collecte les lettres!',
+  
   data: new SlashCommandBuilder()
     .setName('mot-cache')
     .setDescription('🔍 Jeu du mot caché - Collecte les lettres!')
