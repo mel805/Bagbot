@@ -1755,6 +1755,32 @@ fun MusicScreen(
     var isUploading by remember { mutableStateOf(false) }
     val mediaPlayer = remember { MediaPlayer() }
     
+    fun loadUploads() {
+        scope.launch {
+            isLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val response = api.getJson("/api/music/uploads")
+                    val data = json.parseToJsonElement(response).jsonObject
+                    val files = data["files"]?.jsonArray?.mapNotNull { 
+                        it.jsonPrimitive.contentOrNull 
+                    } ?: emptyList()
+                    withContext(Dispatchers.Main) {
+                        uploads = files
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
+                    }
+                } finally {
+                    withContext(Dispatchers.Main) {
+                        isLoading = false
+                    }
+                }
+            }
+        }
+    }
+    
     // File picker pour upload
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -1841,32 +1867,6 @@ fun MusicScreen(
                 withContext(Dispatchers.Main) {
                     snackbar.showSnackbar("❌ Erreur: ${e.javaClass.simpleName} - ${e.message ?: "Inconnue"}")
                     currentlyPlaying = null
-                }
-            }
-        }
-    }
-    
-    fun loadUploads() {
-        scope.launch {
-            isLoading = true
-            withContext(Dispatchers.IO) {
-                try {
-                    val response = api.getJson("/api/music/uploads")
-                    val data = json.parseToJsonElement(response).jsonObject
-                    val files = data["files"]?.jsonArray?.mapNotNull { 
-                        it.jsonPrimitive.contentOrNull 
-                    } ?: emptyList()
-                    withContext(Dispatchers.Main) {
-                        uploads = files
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        snackbar.showSnackbar("❌ Erreur: ${e.message}")
-                    }
-                } finally {
-                    withContext(Dispatchers.Main) {
-                        isLoading = false
-                    }
                 }
             }
         }
