@@ -2396,28 +2396,24 @@ app.get('/api/dashboard/stats', async (req, res) => {
     const totalBots = guild.members.cache.filter(m => m.user.bot).size;
     const totalHumans = totalMembers - totalBots;
     
-    // Lire les données eco et levels
+    // Lire les données depuis config.json
     let ecoUsers = 0;
     let levelUsers = 0;
     
     try {
-      const economyPath = path.join(process.cwd(), 'data', 'economy.json');
-      if (fs.existsSync(economyPath)) {
-        const economyData = JSON.parse(fs.readFileSync(economyPath, 'utf8'));
-        ecoUsers = Object.keys(economyData).length;
+      const configs = readConfigs();
+      
+      // Economy users
+      if (configs.economy && configs.economy.balances) {
+        ecoUsers = Object.keys(configs.economy.balances).length;
+      }
+      
+      // Level users
+      if (configs.levels && configs.levels.data) {
+        levelUsers = Object.keys(configs.levels.data).length;
       }
     } catch (e) {
-      console.error('Error reading economy data:', e);
-    }
-    
-    try {
-      const levelsPath = path.join(process.cwd(), 'data', 'levels.json');
-      if (fs.existsSync(levelsPath)) {
-        const levelsData = JSON.parse(fs.readFileSync(levelsPath, 'utf8'));
-        levelUsers = Object.keys(levelsData).length;
-      }
-    } catch (e) {
-      console.error('Error reading levels data:', e);
+      console.error('Error reading config data:', e);
     }
     
     res.json({
