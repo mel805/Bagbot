@@ -2122,18 +2122,46 @@ app.get('/auth/mobile/callback', async (req, res) => {
     });
     
     // ✅ VÉRIFICATION : L'utilisateur doit être membre du serveur ET admin (ou fondateur)
-    const guild = client.guilds.cache.get(GUILD);
-    if (!guild) {
-      return res.status(500).send('❌ Serveur Discord introuvable');
+    // Utiliser l'API Discord REST pour vérifier le membre
+    const DISCORD_BOT_TOKEN = process.env.DISCORD_TOKEN;
+    if (!DISCORD_BOT_TOKEN) {
+      return res.status(500).send('❌ Bot token non configuré');
     }
     
-    // Récupérer le membre
+    // Récupérer le membre via l'API Discord
     let member;
     try {
-      member = await guild.members.fetch(userData.id);
-    } catch (e) {
-      console.log('❌ User', userData.username, 'is not a member of the server');
-      return res.send(`<!DOCTYPE html>
+      const memberResponse = await new Promise((resolve, reject) => {
+        const options = {
+          hostname: 'discord.com',
+          port: 443,
+          path: `/api/guilds/${GUILD}/members/${userData.id}`,
+          method: 'GET',
+          headers: {
+            'Authorization': `Bot ${DISCORD_BOT_TOKEN}`
+          }
+        };
+        
+        const req = https.request(options, (response) => {
+          let data = '';
+          response.on('data', chunk => data += chunk);
+          response.on('end', () => {
+            if (response.statusCode === 200) {
+              resolve(JSON.parse(data));
+            } else if (response.statusCode === 404) {
+              resolve(null); // Pas membre
+            } else {
+              reject(new Error(`HTTP ${response.statusCode}`));
+            }
+          });
+        });
+        req.on('error', reject);
+        req.end();
+      });
+      
+      if (!memberResponse) {
+        console.log('❌ User', userData.username, 'is not a member of the server');
+        return res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -2161,12 +2189,19 @@ app.get('/auth/mobile/callback', async (req, res) => {
   </div>
 </body>
 </html>`);
+      }
+      
+      member = memberResponse;
+    } catch (e) {
+      console.error('Error fetching member:', e);
+      return res.status(500).send('❌ Erreur lors de la vérification du membre');
     }
     
     // Vérifier si admin ou fondateur
     const configs = readConfigs();
     const staffRoleIds = configs.staffRoleIds || [];
-    const isAdmin = staffRoleIds.some(roleId => member.roles.cache.has(roleId));
+    const memberRoles = member.roles || [];
+    const isAdmin = staffRoleIds.some(roleId => memberRoles.includes(roleId));
     const isFounder = userData.id === FOUNDER_ID;
     
     if (!isFounder && !isAdmin) {
