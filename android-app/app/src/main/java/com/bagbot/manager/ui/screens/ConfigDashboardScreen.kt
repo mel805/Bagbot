@@ -322,12 +322,19 @@ private suspend fun postOrPutSection(
     primaryBody: JsonObject,
     fallbackSectionKey: String,
     fallbackSectionBody: JsonObject,
-) {
-    try {
+): Boolean {
+    return try {
         api.postJson(primaryPostPath, json.encodeToString(JsonObject.serializer(), primaryBody))
+        true
     } catch (e: Exception) {
         Log.w(TAG, "POST failed ($primaryPostPath): ${e.message} -> fallback PUT /api/configs/$fallbackSectionKey")
-        api.putJson("/api/configs/$fallbackSectionKey", json.encodeToString(JsonObject.serializer(), fallbackSectionBody))
+        try {
+            api.putJson("/api/configs/$fallbackSectionKey", json.encodeToString(JsonObject.serializer(), fallbackSectionBody))
+            true
+        } catch (putError: Exception) {
+            Log.e(TAG, "PUT also failed: ${putError.message}")
+            throw putError // Throw only if PUT fails
+        }
     }
 }
 
@@ -3515,7 +3522,7 @@ private fun CountingConfigTab(
                                     put("allowFormulas", allowFormulas)
                                     put("channels", JsonArray(channelIds.map { JsonPrimitive(it) }))
                                 }
-                                api.postJson("/api/counting", json.encodeToString(JsonObject.serializer(), body))
+                                api.putJson("/api/configs/counting", json.encodeToString(JsonObject.serializer(), body))
                                 withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Comptage sauvegardé") }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
