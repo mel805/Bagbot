@@ -380,9 +380,6 @@ private fun DashboardTab(
                         ecoUsers = ecoBalances?.jsonObject?.size ?: 0
                         levelUsers = levelsUsers?.jsonObject?.size ?: 0
                     }
-                        ecoUsers = ecoBalances?.jsonObject?.size ?: 0
-                        levelUsers = levelsData?.jsonObject?.size ?: 0
-                    }
                 } finally {
                     withContext(Dispatchers.Main) { isLoadingStats = false }
                 }
