@@ -6711,34 +6711,44 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Boutons mot-caché
       if (interaction.isButton && interaction.isButton() && interaction.customId?.startsWith('motcache_')) {
+        console.log(`[MOT-CACHE] Bouton détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheButton(interaction);
           return;
         } catch (e) {
-          console.error('[MotCache] Button error:', e);
+          console.error('[MOT-CACHE] Erreur bouton:', e);
+          try {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: `❌ Erreur: ${e.message}`, ephemeral: true });
+            }
+          } catch (_) {}
         }
       }
       
       // Modals mot-caché
       if (interaction.isModalSubmit && interaction.isModalSubmit() && interaction.customId?.startsWith('motcache_modal')) {
+        console.log(`[MOT-CACHE] Modal détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheModal(interaction);
           return;
         } catch (e) {
-          console.error('[MotCache] Modal error:', e);
+          console.error('[MOT-CACHE] Erreur modal:', e);
         }
       }
       
       // Select menus mot-caché
       if (interaction.isStringSelectMenu && interaction.isStringSelectMenu() && interaction.customId?.startsWith('motcache_select')) {
+        console.log(`[MOT-CACHE] Select menu détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheSelect(interaction);
           return;
         } catch (e) {
-          console.error('[MotCache] Select error:', e);
+          console.error('[MOT-CACHE] Erreur select:', e);
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.error('[MOT-CACHE] Erreur chargement handler:', err);
+    }
     // Handler pour /config serveur (menu classique)
     if (interaction.isChatInputCommand() && interaction.commandName === 'config') {
       console.log("[CONFIG DEBUG] Commande /config reçue");

@@ -5,6 +5,8 @@ const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, String
 const { readConfig, writeConfig } = require('../storage/jsonStore');
 
 async function handleMotCacheButton(interaction) {
+  console.log(`[MOT-CACHE-HANDLER] Bouton reçu: ${interaction.customId}`);
+  
   const config = await readConfig();
   const guildConfig = config.guilds[interaction.guildId] || {};
   const motCache = guildConfig.motCache || {
@@ -24,6 +26,7 @@ async function handleMotCacheButton(interaction) {
   };
 
   const buttonId = interaction.customId;
+  console.log(`[MOT-CACHE-HANDLER] Traitement bouton: ${buttonId}`);
 
   // Toggle enabled/disabled
   if (buttonId === 'motcache_toggle') {
@@ -205,13 +208,18 @@ async function handleMotCacheButton(interaction) {
 
   // Ouvrir la config (admin uniquement)
   if (buttonId === 'motcache_open_config') {
+    console.log(`[MOT-CACHE-HANDLER] Bouton config détecté`);
+    
     if (!interaction.memberPermissions.has('Administrator')) {
+      console.log(`[MOT-CACHE-HANDLER] Utilisateur non admin`);
       return interaction.reply({
         content: '❌ Seuls les administrateurs peuvent configurer le jeu.',
         ephemeral: true
       });
     }
 
+    console.log(`[MOT-CACHE-HANDLER] Construction de l'embed config`);
+    
     const embed = new EmbedBuilder()
       .setTitle('⚙️ Configuration Mot-Caché')
       .setDescription('────────────────────────────')
@@ -263,26 +271,49 @@ async function handleMotCacheButton(interaction) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    // IMPORTANT: Pour un bouton d'interaction, on doit utiliser update() pas reply()
-    // Car l'interaction provient d'un bouton cliqué dans un message existant
+    console.log(`[MOT-CACHE-HANDLER] Tentative d'update du message`);
+    
+    // IMPORTANT: Pour un bouton dans un message ephemeral, on doit utiliser update()
     try {
-      return await interaction.update({
+      await interaction.update({
         embeds: [embed],
         components: [row1, row2, row3]
       });
+      console.log(`[MOT-CACHE-HANDLER] Update réussi`);
+      return;
     } catch (err) {
-      console.error('[MOT-CACHE] Error updating config button:', err);
-      // Si l'update échoue, essayer deferUpdate puis editReply
+      console.error('[MOT-CACHE-HANDLER] Erreur update:', err.message);
+      console.error('[MOT-CACHE-HANDLER] Stack:', err.stack);
+      
+      // Fallback: essayer deferUpdate puis editReply
       try {
+        console.log(`[MOT-CACHE-HANDLER] Tentative fallback avec deferUpdate`);
         if (!interaction.deferred && !interaction.replied) {
           await interaction.deferUpdate();
         }
-        return await interaction.editReply({
+        await interaction.editReply({
           embeds: [embed],
           components: [row1, row2, row3]
         });
+        console.log(`[MOT-CACHE-HANDLER] EditReply réussi`);
+        return;
       } catch (err2) {
-        console.error('[MOT-CACHE] EditReply also failed:', err2);
+        console.error('[MOT-CACHE-HANDLER] EditReply échoué:', err2.message);
+        console.error('[MOT-CACHE-HANDLER] Stack:', err2.stack);
+        
+        // Dernier recours: reply ephemeral
+        try {
+          if (!interaction.replied) {
+            await interaction.reply({
+              embeds: [embed],
+              components: [row1, row2, row3],
+              ephemeral: true
+            });
+            console.log(`[MOT-CACHE-HANDLER] Reply ephemeral réussi`);
+          }
+        } catch (err3) {
+          console.error('[MOT-CACHE-HANDLER] Tous les tentatives ont échoué:', err3.message);
+        }
       }
     }
   }
