@@ -568,6 +568,51 @@ app.get('/api/discord/roles', async (req, res) => {
   }
 });
 
+// ========== STAFF CHAT ==========
+
+const staffMessages = [];
+
+app.get('/api/staff/chat/messages', requireAuth, (req, res) => {
+  try {
+    console.log(`📥 [BOT-API] GET /api/staff/chat/messages`);
+    res.json({ messages: staffMessages });
+  } catch (error) {
+    console.error('[BOT-API] Error fetching staff messages:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/staff/chat/send', requireAuth, express.json(), (req, res) => {
+  try {
+    const { userId, username, message } = req.body;
+    console.log(`📥 [BOT-API] POST /api/staff/chat/send from ${username}`);
+    
+    if (!message || !userId || !username) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+    
+    const newMessage = {
+      id: Date.now().toString(),
+      userId,
+      username,
+      message,
+      timestamp: new Date().toISOString()
+    };
+    
+    staffMessages.push(newMessage);
+    
+    // Garder seulement les 100 derniers messages
+    if (staffMessages.length > 100) {
+      staffMessages.shift();
+    }
+    
+    res.json({ success: true, message: newMessage });
+  } catch (error) {
+    console.error('[BOT-API] Error sending staff message:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ========== MUSIQUE ==========
 
 // Configuration multer
