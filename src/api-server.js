@@ -1320,9 +1320,14 @@ app.post('/api/truthdare/:mode', requireAuth, express.json(), async (req, res) =
     if (!config.guilds[GUILD].truthdare) config.guilds[GUILD].truthdare = {};
     if (!config.guilds[GUILD].truthdare[mode]) config.guilds[GUILD].truthdare[mode] = { prompts: [] };
     
+    // Normaliser le type: 'v' -> 'verite', 'a' -> 'action'
+    let type = req.body.type || 'v';
+    if (type === 'v' || type === 'vérité') type = 'verite';
+    if (type === 'a') type = 'action';
+    
     const newPrompt = {
       id: Date.now().toString(),
-      type: req.body.type || 'v',
+      type: type,
       text: req.body.text || '',
       addedAt: new Date().toISOString()
     };

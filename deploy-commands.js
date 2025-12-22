@@ -3,8 +3,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-const globalCommands = [];  // Commandes avec MP
-const guildCommands = [];   // Commandes sans MP
+const allCommands = [];
 const commandsPath = path.join(__dirname, 'src', 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'));
 
@@ -21,19 +20,20 @@ for (const file of commandFiles) {
     
     const cmdData = command.data.toJSON();
     
-    // Vérifier si la commande a dmPermission: true
+    // Vérifier si la commande a dmPermission: true explicitement
     const hasDMPermission = content.includes('dmPermission: true') || 
                            content.includes('setDMPermission(true)');
     
-    if (hasDMPermission) {
-      // Commande disponible sur serveur ET en MP -> GLOBALE
-      globalCommands.push(cmdData);
-      console.log(`  🌐 ${cmdData.name} (global - serveur + MP)`);
-    } else {
-      // Commande disponible UNIQUEMENT sur serveur -> GUILD
-      guildCommands.push(cmdData);
-      console.log(`  🏰 ${cmdData.name} (guild - serveur uniquement)`);
+    // FORCER dmPermission: false si pas explicitement true
+    if (!hasDMPermission) {
+      cmdData.dm_permission = false;
     }
+    
+    allCommands.push(cmdData);
+    
+    const dmStatus = hasDMPermission ? '(serveur + MP)' : '(serveur uniquement)';
+    console.log(`  🌐 ${cmdData.name} ${dmStatus}`);
+    
   } catch (error) {
     console.log(`  ⚠️  ${file} - Erreur: ${error.message}`);
   }
@@ -41,43 +41,34 @@ for (const file of commandFiles) {
 
 console.log('');
 console.log('='.repeat(80));
-console.log(`🌐 Commandes GLOBALES (serveur + MP): ${globalCommands.length}`);
-console.log(`🏰 Commandes GUILD (serveur uniquement): ${guildCommands.length}`);
+console.log(`📊 Total: ${allCommands.length} commandes`);
+console.log('   Toutes déployées en GLOBAL avec dm_permission contrôlé');
 console.log('');
 
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);
-const GUILD_ID = '1360897918504271882';
 
 (async () => {
   try {
-    console.log('🚀 Déploiement...');
+    console.log('🚀 Déploiement GLOBAL de toutes les commandes...');
     console.log('');
     
-    // Déployer les commandes globales
-    console.log(`📤 Déploiement de ${globalCommands.length} commandes globales...`);
+    // Déployer TOUTES les commandes en global
+    console.log(`📤 Déploiement de ${allCommands.length} commandes...`);
     await rest.put(
       Routes.applicationCommands(process.env.CLIENT_ID),
-      { body: globalCommands }
+      { body: allCommands }
     );
-    console.log('✅ Commandes globales déployées');
-    
-    // Déployer les commandes guild
-    console.log(`📤 Déploiement de ${guildCommands.length} commandes guild...`);
-    await rest.put(
-      Routes.applicationGuildCommands(process.env.CLIENT_ID, GUILD_ID),
-      { body: guildCommands }
-    );
-    console.log('✅ Commandes guild déployées');
+    console.log('✅ Toutes les commandes déployées en GLOBAL');
     
     console.log('');
     console.log('🎉 Déploiement terminé !');
     console.log('');
-    console.log('📝 Résultat:');
-    console.log(`   - ${globalCommands.length} commandes sur serveur + MP`);
-    console.log(`   - ${guildCommands.length} commandes sur serveur uniquement`);
-    console.log(`   - Total sur serveur: ${globalCommands.length + guildCommands.length}`);
+    console.log(`📝 ${allCommands.length} commandes disponibles sur le serveur`);
+    console.log('   (MP désactivé sauf pour celles avec dmPermission: true)');
     
+    process.exit(0);
   } catch (error) {
     console.error('❌ Erreur:', error);
+    process.exit(1);
   }
 })();
