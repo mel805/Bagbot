@@ -13,29 +13,45 @@ async function handleMessage(message) {
     const guildConfig = config.guilds[message.guildId] || {};
     const motCache = guildConfig.motCache || {};
 
+    // Log pour debug
+    console.log(`[MOT-CACHE] Message reçu de ${message.author.username} - Jeu activé: ${motCache.enabled}, Mot: ${motCache.targetWord ? 'défini' : 'non défini'}`);
+
     // Vérifier si le jeu est activé
-    if (!motCache.enabled || !motCache.targetWord) return;
+    if (!motCache.enabled || !motCache.targetWord) {
+      if (!motCache.enabled) console.log('[MOT-CACHE] Jeu non activé');
+      if (!motCache.targetWord) console.log('[MOT-CACHE] Mot non défini');
+      return;
+    }
 
     // Vérifier longueur minimale du message
-    if (message.content.length < (motCache.minMessageLength || 15)) return;
+    const minLength = motCache.minMessageLength || 15;
+    if (message.content.length < minLength) {
+      console.log(`[MOT-CACHE] Message trop court: ${message.content.length} < ${minLength}`);
+      return;
+    }
 
     // Vérifier si le salon est autorisé
     if (motCache.allowedChannels && motCache.allowedChannels.length > 0) {
-      if (!motCache.allowedChannels.includes(message.channelId)) return;
+      if (!motCache.allowedChannels.includes(message.channelId)) {
+        console.log(`[MOT-CACHE] Salon ${message.channelId} non autorisé`);
+        return;
+      }
     }
 
     // Déterminer si on doit cacher une lettre
     let shouldHide = false;
+    const random = Math.random() * 100;
 
     if (motCache.mode === 'probability') {
       // Mode probabilité
-      const random = Math.random() * 100;
-      shouldHide = random < (motCache.probability || 5);
+      const prob = motCache.probability || 5;
+      shouldHide = random < prob;
+      console.log(`[MOT-CACHE] Mode probabilité: ${prob}%, Random: ${random.toFixed(2)}, ShouldHide: ${shouldHide}`);
     } else {
       // Mode programmé - géré par un cron job
       // Pour l'instant, on va utiliser une probabilité faible pour simuler
-      const random = Math.random() * 100;
       shouldHide = random < 2; // 2% de chance
+      console.log(`[MOT-CACHE] Mode programmé: 2%, Random: ${random.toFixed(2)}, ShouldHide: ${shouldHide}`);
     }
 
     if (!shouldHide) return;
@@ -77,7 +93,7 @@ async function handleMessage(message) {
             `🔍 **${message.author} a trouvé une lettre cachée !**\n\n` +
             `Lettre: **${letter}**\n` +
             `Progression: ${motCache.collections[message.author.id].length}/${targetWord.length}\n` +
-            `💡 Utilise \`/mot-cache deviner <mot>\` quand tu penses avoir trouvé !`
+            `💡 Utilise \`/mot-cache\` puis clique sur "✍️ Entrer le mot" quand tu penses avoir trouvé !`
           );
           
           // Supprimer après 15 secondes

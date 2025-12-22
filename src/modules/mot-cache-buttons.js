@@ -1,10 +1,12 @@
 // Handlers pour les boutons de configuration mot-caché
 // À intégrer dans bot.js dans la section client.on('interactionCreate')
 
-const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder } = require('discord.js');
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { readConfig, writeConfig } = require('../storage/jsonStore');
 
 async function handleMotCacheButton(interaction) {
+  console.log(`[MOT-CACHE-HANDLER] Bouton reçu: ${interaction.customId}`);
+  
   const config = await readConfig();
   const guildConfig = config.guilds[interaction.guildId] || {};
   const motCache = guildConfig.motCache || {
@@ -16,12 +18,15 @@ async function handleMotCacheButton(interaction) {
     emoji: '🔍',
     minMessageLength: 15,
     allowedChannels: [],
-    notificationChannel: null,
+    letterNotificationChannel: null,
+    winnerNotificationChannel: null,
+    rewardAmount: 5000,
     collections: {},
     winners: []
   };
 
   const buttonId = interaction.customId;
+  console.log(`[MOT-CACHE-HANDLER] Traitement bouton: ${buttonId}`);
 
   // Toggle enabled/disabled
   if (buttonId === 'motcache_toggle') {
@@ -180,7 +185,7 @@ async function handleMotCacheButton(interaction) {
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Ex: 123456789')
       .setRequired(false)
-      .setValue(motCache.notificationChannel || '');
+      .setValue(motCache.winnerNotificationChannel || '');
 
     modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
     return interaction.showModal(modal);
@@ -203,13 +208,18 @@ async function handleMotCacheButton(interaction) {
 
   // Ouvrir la config (admin uniquement)
   if (buttonId === 'motcache_open_config') {
+    console.log(`[MOT-CACHE-HANDLER] Bouton config détecté`);
+    
     if (!interaction.memberPermissions.has('Administrator')) {
+      console.log(`[MOT-CACHE-HANDLER] Utilisateur non admin`);
       return interaction.reply({
         content: '❌ Seuls les administrateurs peuvent configurer le jeu.',
         ephemeral: true
       });
     }
 
+    console.log(`[MOT-CACHE-HANDLER] Construction de l'embed config`);
+    
     const embed = new EmbedBuilder()
       .setTitle('⚙️ Configuration Mot-Caché')
       .setDescription('────────────────────────────')
@@ -220,7 +230,7 @@ async function handleMotCacheButton(interaction) {
         { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
         { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
         { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
-        { name: '📢 Salon gagnant', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true }
+        { name: '📢 Salon gagnant', value: motCache.winnerNotificationChannel ? `<#${motCache.winnerNotificationChannel}>` : 'Non configuré', inline: true }
       )
       .setColor('#9b59b6');
 
@@ -261,10 +271,43 @@ async function handleMotCacheButton(interaction) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    return interaction.update({
-      embeds: [embed],
-      components: [row1, row2, row3]
-    });
+    console.log(`[MOT-CACHE-HANDLER] Tentative update (ephemeral button)`);
+    
+    // SOLUTION DÉFINITIVE: Pour un bouton venant d'un message ephemeral de commande slash,
+    // il FAUT utiliser interaction.update() - c'est la seule méthode qui fonctionne
+    try {
+      await interaction.update({
+        embeds: [embed],
+        components: [row1, row2, row3]
+      });
+      console.log(`[MOT-CACHE-HANDLER] ✅ Update réussi`);
+      return;
+    } catch (err) {
+      console.error('[MOT-CACHE-HANDLER] ❌ Erreur update:', err.message);
+      console.error('[MOT-CACHE-HANDLER] Code erreur:', err.code);
+      console.error('[MOT-CACHE-HANDLER] Stack complète:', err.stack);
+      
+      // L'erreur peut nous dire exactement ce qui ne va pas
+      if (err.code === 10062 || err.message.includes('Unknown interaction')) {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Interaction expirée (>3 secondes)');
+      } else if (err.code === 40060 || err.message.includes('already been acknowledged')) {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Interaction déjà acknowledgée');
+      } else {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Erreur inconnue');
+      }
+      
+      // Répondre à l'utilisateur avec l'erreur
+      try {
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            content: `❌ Erreur d'interaction: ${err.message}\n\nRéessayez la commande \`/mot-cache\``,
+            ephemeral: true
+          });
+        }
+      } catch (e) {
+        console.error('[MOT-CACHE-HANDLER] ❌ Impossible de répondre:', e.message);
+      }
+    }
   }
 
   // Deviner le mot (modal)
@@ -421,7 +464,7 @@ async function handleMotCacheModal(interaction) {
     const channelId = interaction.fields.getTextInputValue('channel').trim();
     
     if (channelId === '') {
-      motCache.notificationChannel = null;
+      motCache.winnerNotificationChannel = null;
     } else {
       // Vérifier que le salon existe
       const channel = interaction.guild.channels.cache.get(channelId);
@@ -431,15 +474,15 @@ async function handleMotCacheModal(interaction) {
           ephemeral: true
         });
       }
-      motCache.notificationChannel = channelId;
+      motCache.winnerNotificationChannel = channelId;
     }
     
     guildConfig.motCache = motCache;
     await writeConfig(config);
 
     return interaction.reply({
-      content: motCache.notificationChannel 
-        ? `✅ Salon notifications gagnant : <#${motCache.notificationChannel}>` 
+      content: motCache.winnerNotificationChannel 
+        ? `✅ Salon notifications gagnant : <#${motCache.winnerNotificationChannel}>` 
         : '✅ Salon notifications gagnant désactivé',
       ephemeral: true
     });
@@ -496,8 +539,8 @@ async function handleMotCacheModal(interaction) {
         .setFooter({ text: 'Bravo champion !' });
 
       // Notifier dans le salon de notifications
-      if (motCache.notificationChannel) {
-        const notifChannel = interaction.guild.channels.cache.get(motCache.notificationChannel);
+      if (motCache.winnerNotificationChannel) {
+        const notifChannel = interaction.guild.channels.cache.get(motCache.winnerNotificationChannel);
         if (notifChannel) {
           notifChannel.send({
             content: `🎉 <@${userId}> a trouvé le mot caché : **${guessedWord}** et gagne **${reward} BAG$** !`,

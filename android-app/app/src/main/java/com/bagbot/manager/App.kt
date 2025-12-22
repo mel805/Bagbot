@@ -7,6 +7,13 @@ import android.util.Log
 import android.media.MediaPlayer
 import android.content.Context
 import android.provider.MediaStore
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -494,6 +501,48 @@ data class StaffMessage(
     val room: String = "global"
 )
 
+// Fonction pour créer le canal de notification
+fun createNotificationChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val channelId = "staff_chat_channel"
+        val channelName = "Chat Staff"
+        val channelDescription = "Notifications pour les messages du chat staff"
+        val importance = NotificationManager.IMPORTANCE_HIGH
+        
+        val channel = NotificationChannel(channelId, channelName, importance).apply {
+            description = channelDescription
+        }
+        
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+    }
+}
+
+// Fonction pour envoyer une notification
+fun sendStaffChatNotification(context: Context, senderName: String, message: String) {
+    try {
+        val notificationId = System.currentTimeMillis().toInt()
+        val channelId = "staff_chat_channel"
+        
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_email)
+            .setContentTitle("💬 Chat Staff - $senderName")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setDefaults(NotificationCompat.DEFAULT_ALL)
+        
+        val notificationManager = NotificationManagerCompat.from(context)
+        try {
+            notificationManager.notify(notificationId, builder.build())
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission notification refusée: ${e.message}")
+        }
+    } catch (e: Exception) {
+        Log.e(TAG, "Erreur notification: ${e.message}")
+    }
+}
+
 @Composable
 fun StaffChatScreen(
     api: ApiClient,
@@ -503,13 +552,20 @@ fun StaffChatScreen(
     members: Map<String, String>,
     userInfo: JsonObject?
 ) {
+    val context = LocalContext.current
     var messages by remember { mutableStateOf<List<StaffMessage>>(emptyList()) }
+    var previousMessageCount by remember { mutableStateOf(0) }
     var newMessage by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var isSending by remember { mutableStateOf(false) }
     var selectedRoom by remember { mutableStateOf("global") }
     var showRoomSelector by remember { mutableStateOf(false) }
     var onlineAdmins by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
+    
+    // Créer le canal de notification au premier rendu
+    LaunchedEffect(Unit) {
+        createNotificationChannel(context)
+    }
     
     fun loadMessages() {
         scope.launch {
@@ -519,7 +575,7 @@ fun StaffChatScreen(
                     val response = api.getJson("/api/staff/chat/messages?room=$selectedRoom")
                     val data = json.parseToJsonElement(response).jsonObject
                     withContext(Dispatchers.Main) {
-                        messages = data["messages"]?.jsonArray?.map {
+                        val newMessages = data["messages"]?.jsonArray?.map {
                             val msg = it.jsonObject
                             StaffMessage(
                                 id = msg["id"].safeStringOrEmpty(),
@@ -533,6 +589,23 @@ fun StaffChatScreen(
                                 room = msg["room"].safeString() ?: "global"
                             )
                         } ?: emptyList()
+                        
+                        // Vérifier s'il y a de nouveaux messages
+                        if (newMessages.size > previousMessageCount && previousMessageCount > 0) {
+                            // Nouveau message détecté, envoyer une notification
+                            val latestMessage = newMessages.firstOrNull()
+                            if (latestMessage != null) {
+                                val currentUserId = userInfo?.get("id").safeStringOrEmpty()
+                                // Ne pas notifier pour ses propres messages
+                                if (latestMessage.userId != currentUserId) {
+                                    val senderName = members[latestMessage.userId] ?: latestMessage.username
+                                    sendStaffChatNotification(context, senderName, latestMessage.message)
+                                }
+                            }
+                        }
+                        
+                        previousMessageCount = newMessages.size
+                        messages = newMessages
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Load messages error: ${e.message}")
@@ -751,26 +824,6 @@ fun StaffChatScreen(
                 // Boutons d'actions rapides
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { sendMessage(commandType = "command", commandData = "/actionverite") },
-                        enabled = !isSending,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2))
-                    ) {
-                        Icon(Icons.Default.Casino, null, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("A/V", fontSize = 12.sp)
-                    }
-                    
-                    Button(
-                        onClick = { sendMessage(commandType = "command", commandData = "/motcache") },
-                        enabled = !isSending,
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE75C))
-                    ) {
-                        Text("🔍", fontSize = 12.sp)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Mot Caché", fontSize = 12.sp, color = Color.Black)
-                    }
-                    
-                    Button(
                         onClick = { 
                             scope.launch {
                                 snackbar.showSnackbar("📎 Upload de fichiers pas encore implémenté dans cette version")
@@ -787,13 +840,62 @@ fun StaffChatScreen(
                 
                 Spacer(Modifier.height(8.dp))
                 
+                // Détection des mentions (@)
+                val mentionSuggestions = remember(newMessage, onlineAdmins) {
+                    val lastWord = newMessage.split(" ").lastOrNull() ?: ""
+                    if (lastWord.startsWith("@") && lastWord.length > 1) {
+                        val query = lastWord.substring(1).lowercase()
+                        onlineAdmins.filter { admin ->
+                            val adminId = admin["userId"].safeStringOrEmpty()
+                            val adminName = (members[adminId] ?: admin["username"].safeString() ?: "").lowercase()
+                            val currentUserId = userInfo?.get("id").safeStringOrEmpty()
+                            adminId != currentUserId && adminName.contains(query)
+                        }
+                    } else {
+                        emptyList()
+                    }
+                }
+                
+                // Liste de suggestions de mentions (comme Discord)
+                if (mentionSuggestions.isNotEmpty()) {
+                    Card(
+                        Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))
+                    ) {
+                        LazyColumn {
+                            items(mentionSuggestions) { admin ->
+                                val adminId = admin["userId"].safeStringOrEmpty()
+                                val adminName = members[adminId] ?: admin["username"].safeString() ?: "Inconnu"
+                                
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            // Remplacer la mention partielle par la mention complète
+                                            val words = newMessage.split(" ").toMutableList()
+                                            words[words.lastIndex] = "@$adminName"
+                                            newMessage = words.joinToString(" ") + " "
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Person, null, tint = Color(0xFF5865F2), modifier = Modifier.size(20.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(adminName, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                
                 // Champ de texte
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     OutlinedTextField(
                         value = newMessage,
                         onValueChange = { newMessage = it },
                         modifier = Modifier.weight(1f),
-                        placeholder = { Text("Écrivez un message...") },
+                        placeholder = { Text("Écrivez un message... (@ pour mentionner)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray),
                         maxLines = 4
                     )

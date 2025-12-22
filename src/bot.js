@@ -6711,34 +6711,50 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Boutons mot-caché
       if (interaction.isButton && interaction.isButton() && interaction.customId?.startsWith('motcache_')) {
+        console.log(`[MOT-CACHE] ✅ Bouton détecté: ${interaction.customId}`);
+        console.log(`[MOT-CACHE] Type: ${interaction.componentType}, ID: ${interaction.id}`);
+        console.log(`[MOT-CACHE] Replied: ${interaction.replied}, Deferred: ${interaction.deferred}`);
         try {
           await motCacheHandlers.handleMotCacheButton(interaction);
+          console.log(`[MOT-CACHE] ✅ Handler terminé avec succès`);
           return;
         } catch (e) {
-          console.error('[MotCache] Button error:', e);
+          console.error('[MOT-CACHE] ❌ Erreur dans handler:', e.message);
+          console.error('[MOT-CACHE] Stack:', e.stack);
+          try {
+            if (!interaction.replied && !interaction.deferred) {
+              await interaction.reply({ content: `❌ Erreur: ${e.message}`, ephemeral: true });
+            }
+          } catch (replyErr) {
+            console.error('[MOT-CACHE] ❌ Impossible de répondre avec erreur:', replyErr.message);
+          }
         }
       }
       
       // Modals mot-caché
       if (interaction.isModalSubmit && interaction.isModalSubmit() && interaction.customId?.startsWith('motcache_modal')) {
+        console.log(`[MOT-CACHE] Modal détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheModal(interaction);
           return;
         } catch (e) {
-          console.error('[MotCache] Modal error:', e);
+          console.error('[MOT-CACHE] Erreur modal:', e);
         }
       }
       
       // Select menus mot-caché
       if (interaction.isStringSelectMenu && interaction.isStringSelectMenu() && interaction.customId?.startsWith('motcache_select')) {
+        console.log(`[MOT-CACHE] Select menu détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheSelect(interaction);
           return;
         } catch (e) {
-          console.error('[MotCache] Select error:', e);
+          console.error('[MOT-CACHE] Erreur select:', e);
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.error('[MOT-CACHE] Erreur chargement handler:', err);
+    }
     // Handler pour /config serveur (menu classique)
     if (interaction.isChatInputCommand() && interaction.commandName === 'config') {
       console.log("[CONFIG DEBUG] Commande /config reçue");
@@ -12778,6 +12794,15 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`[ECONOMY DEBUG] Message reward: User ${message.author.id} in guild ${message.guild.id}: ${beforeAmount} + ${reward} = ${userEco.amount}`);
       }
     } catch (_) {}
+
+    // ========== HANDLER MOT-CACHÉ (lettres aléatoires) ==========
+    try {
+      const motCacheHandler = require('./modules/mot-cache-handler');
+      await motCacheHandler.handleMessage(message);
+    } catch (err) {
+      // Log all errors for debugging
+      console.error('[MOT-CACHE] Error in message handler:', err);
+    }
   } catch (_) {}
 });
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
