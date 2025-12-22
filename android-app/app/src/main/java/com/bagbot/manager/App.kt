@@ -1046,7 +1046,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 icon = { Icon(Icons.Default.Settings, "Config") },
                                 label = { Text("Config") }
                             )
-                            if (isFounder) {
+                            // Accès Admin : Fondateur OU Admin (avec rôle staff)
+                            if (isFounder || isAdmin) {
                                 NavigationBarItem(
                                     selected = tab == 3,
                                     onClick = { tab = 3 },
@@ -1189,7 +1190,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 baseUrl = baseUrl
                             )
                         }
-                        tab == 3 && isFounder -> {
+                        // Accès Admin : Fondateur OU Admin (avec rôle staff)
+                        tab == 3 && (isFounder || isAdmin) -> {
                             StaffMainScreen(
                                 api = api,
                                 json = json,
