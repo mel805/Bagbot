@@ -6711,17 +6711,23 @@ client.on(Events.InteractionCreate, async (interaction) => {
       
       // Boutons mot-caché
       if (interaction.isButton && interaction.isButton() && interaction.customId?.startsWith('motcache_')) {
-        console.log(`[MOT-CACHE] Bouton détecté: ${interaction.customId}`);
+        console.log(`[MOT-CACHE] ✅ Bouton détecté: ${interaction.customId}`);
+        console.log(`[MOT-CACHE] Type: ${interaction.componentType}, ID: ${interaction.id}`);
+        console.log(`[MOT-CACHE] Replied: ${interaction.replied}, Deferred: ${interaction.deferred}`);
         try {
           await motCacheHandlers.handleMotCacheButton(interaction);
+          console.log(`[MOT-CACHE] ✅ Handler terminé avec succès`);
           return;
         } catch (e) {
-          console.error('[MOT-CACHE] Erreur bouton:', e);
+          console.error('[MOT-CACHE] ❌ Erreur dans handler:', e.message);
+          console.error('[MOT-CACHE] Stack:', e.stack);
           try {
             if (!interaction.replied && !interaction.deferred) {
               await interaction.reply({ content: `❌ Erreur: ${e.message}`, ephemeral: true });
             }
-          } catch (_) {}
+          } catch (replyErr) {
+            console.error('[MOT-CACHE] ❌ Impossible de répondre avec erreur:', replyErr.message);
+          }
         }
       }
       

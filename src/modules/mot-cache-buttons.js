@@ -271,49 +271,41 @@ async function handleMotCacheButton(interaction) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    console.log(`[MOT-CACHE-HANDLER] Tentative d'update du message`);
+    console.log(`[MOT-CACHE-HANDLER] Tentative update (ephemeral button)`);
     
-    // IMPORTANT: Pour un bouton dans un message ephemeral, on doit utiliser update()
+    // SOLUTION DÉFINITIVE: Pour un bouton venant d'un message ephemeral de commande slash,
+    // il FAUT utiliser interaction.update() - c'est la seule méthode qui fonctionne
     try {
       await interaction.update({
         embeds: [embed],
         components: [row1, row2, row3]
       });
-      console.log(`[MOT-CACHE-HANDLER] Update réussi`);
+      console.log(`[MOT-CACHE-HANDLER] ✅ Update réussi`);
       return;
     } catch (err) {
-      console.error('[MOT-CACHE-HANDLER] Erreur update:', err.message);
-      console.error('[MOT-CACHE-HANDLER] Stack:', err.stack);
+      console.error('[MOT-CACHE-HANDLER] ❌ Erreur update:', err.message);
+      console.error('[MOT-CACHE-HANDLER] Code erreur:', err.code);
+      console.error('[MOT-CACHE-HANDLER] Stack complète:', err.stack);
       
-      // Fallback: essayer deferUpdate puis editReply
+      // L'erreur peut nous dire exactement ce qui ne va pas
+      if (err.code === 10062 || err.message.includes('Unknown interaction')) {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Interaction expirée (>3 secondes)');
+      } else if (err.code === 40060 || err.message.includes('already been acknowledged')) {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Interaction déjà acknowledgée');
+      } else {
+        console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Erreur inconnue');
+      }
+      
+      // Répondre à l'utilisateur avec l'erreur
       try {
-        console.log(`[MOT-CACHE-HANDLER] Tentative fallback avec deferUpdate`);
-        if (!interaction.deferred && !interaction.replied) {
-          await interaction.deferUpdate();
+        if (!interaction.replied && !interaction.deferred) {
+          await interaction.reply({
+            content: `❌ Erreur d'interaction: ${err.message}\n\nRéessayez la commande \`/mot-cache\``,
+            ephemeral: true
+          });
         }
-        await interaction.editReply({
-          embeds: [embed],
-          components: [row1, row2, row3]
-        });
-        console.log(`[MOT-CACHE-HANDLER] EditReply réussi`);
-        return;
-      } catch (err2) {
-        console.error('[MOT-CACHE-HANDLER] EditReply échoué:', err2.message);
-        console.error('[MOT-CACHE-HANDLER] Stack:', err2.stack);
-        
-        // Dernier recours: reply ephemeral
-        try {
-          if (!interaction.replied) {
-            await interaction.reply({
-              embeds: [embed],
-              components: [row1, row2, row3],
-              ephemeral: true
-            });
-            console.log(`[MOT-CACHE-HANDLER] Reply ephemeral réussi`);
-          }
-        } catch (err3) {
-          console.error('[MOT-CACHE-HANDLER] Tous les tentatives ont échoué:', err3.message);
-        }
+      } catch (e) {
+        console.error('[MOT-CACHE-HANDLER] ❌ Impossible de répondre:', e.message);
       }
     }
   }
