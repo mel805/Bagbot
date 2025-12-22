@@ -42,43 +42,43 @@ for (const file of commandFiles) {
 console.log('');
 console.log('='.repeat(80));
 console.log(`📊 Total: ${allCommands.length} commandes`);
-console.log('   Déployées en GLOBAL par lots de 10 pour éviter le rate limiting');
 console.log('');
 
-const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+const rest = new REST({ timeout: 60000 }).setToken(process.env.DISCORD_TOKEN);
 
 // Fonction pour attendre
 const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   try {
-    console.log('🚀 Déploiement GLOBAL par lots...');
+    console.log('🚀 Déploiement GLOBAL de toutes les commandes...');
     console.log('');
     
-    // Déployer par lots de 10 commandes
-    const BATCH_SIZE = 10;
-    let deployed = 0;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 3;
+    let success = false;
     
-    for (let i = 0; i < allCommands.length; i += BATCH_SIZE) {
-      const batch = allCommands.slice(i, i + BATCH_SIZE);
-      console.log(`📤 Déploiement du lot ${Math.floor(i/BATCH_SIZE) + 1}/${Math.ceil(allCommands.length/BATCH_SIZE)} (${batch.length} commandes)...`);
+    while (!success && attempts < MAX_ATTEMPTS) {
+      attempts++;
+      console.log(`📤 Tentative ${attempts}/${MAX_ATTEMPTS} - Déploiement de ${allCommands.length} commandes...`);
       
       try {
         await rest.put(
           Routes.applicationCommands(process.env.CLIENT_ID),
-          { body: allCommands.slice(0, i + batch.length) } // Envoyer toutes les commandes jusqu'à maintenant
+          { body: allCommands }
         );
-        deployed += batch.length;
-        console.log(`✅ ${deployed}/${allCommands.length} commandes déployées`);
-        
-        // Attendre 2 secondes entre chaque lot
-        if (i + BATCH_SIZE < allCommands.length) {
-          console.log('⏳ Attente 2s avant le prochain lot...');
-          await wait(2000);
-        }
+        success = true;
+        console.log('✅ Toutes les commandes déployées en GLOBAL');
       } catch (error) {
-        console.error(`❌ Erreur lot ${Math.floor(i/BATCH_SIZE) + 1}:`, error.message);
-        // Continuer malgré l'erreur
+        console.error(`❌ Erreur tentative ${attempts}:`, error.message);
+        
+        if (attempts < MAX_ATTEMPTS) {
+          const waitTime = attempts * 5000; // 5s, 10s
+          console.log(`⏳ Nouvelle tentative dans ${waitTime/1000}s...`);
+          await wait(waitTime);
+        } else {
+          throw error;
+        }
       }
     }
     
@@ -90,7 +90,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
     
     process.exit(0);
   } catch (error) {
-    console.error('❌ Erreur globale:', error);
+    console.error('❌ Erreur finale:', error);
     process.exit(1);
   }
 })();
