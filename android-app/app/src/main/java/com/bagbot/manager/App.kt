@@ -91,7 +91,7 @@ val configGroups = listOf(
         "🛠️ Fonctionnalités",
         Icons.Default.Extension,
         Color(0xFF2196F3),
-        listOf("tickets", "confess", "counting", "disboard", "autothread")
+        listOf("tickets", "confess", "counting", "disboard", "autothread", "motCache")
     ),
     ConfigGroup(
         "customization",
@@ -2228,6 +2228,10 @@ fun PlaylistsTab(
     var isLoading by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var newPlaylistName by remember { mutableStateOf("") }
+    var selectedPlaylistForAdd by remember { mutableStateOf<String?>(null) }
+    var showAddSongDialog by remember { mutableStateOf(false) }
+    var selectedSong by remember { mutableStateOf<String?>(null) }
+    var expandedPlaylist by remember { mutableStateOf<String?>(null) }
     
     fun loadPlaylists() {
         scope.launch {
@@ -2236,13 +2240,12 @@ fun PlaylistsTab(
                 try {
                     android.util.Log.d("Playlists", "Loading playlists...")
                     val response = api.getJson("/api/music/playlists")
-                    android.util.Log.d("Playlists", "Response: $response")
+                    android.util.Log.d("Playlists", "Response: ${response.take(200)}")
                     val data = json.parseToJsonElement(response).jsonObject
                     val plist = data["playlists"]?.jsonArray?.mapNotNull { it.jsonObject } ?: emptyList()
                     android.util.Log.d("Playlists", "Parsed ${plist.size} playlists")
                     withContext(Dispatchers.Main) {
                         playlists = plist
-                        snackbar.showSnackbar("📋 ${plist.size} playlist(s) chargée(s)")
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("Playlists", "Error loading playlists", e)
@@ -2382,57 +2385,227 @@ fun PlaylistsTab(
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
                     ) {
                         Column(Modifier.padding(16.dp)) {
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.PlaylistPlay,
-                                        null,
-                                        tint = Color(0xFF9C27B0),
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            playlistName,
-                                            color = Color.White,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold
+                            Column(Modifier.fillMaxWidth()) {
+                                // Header de la playlist
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                        Icon(
+                                            Icons.Default.PlaylistPlay,
+                                            null,
+                                            tint = Color(0xFF9C27B0),
+                                            modifier = Modifier.size(32.dp)
                                         )
-                                        Text(
-                                            "${songs.size} chanson(s)",
-                                            color = Color.Gray,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
+                                        Spacer(Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                playlistName,
+                                                color = Color.White,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                "${songs.size} chanson(s)",
+                                                color = Color.Gray,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                    Row {
+                                        IconButton(onClick = { 
+                                            expandedPlaylist = if (expandedPlaylist == playlistId) null else playlistId
+                                        }) {
+                                            Icon(
+                                                if (expandedPlaylist == playlistId) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                null,
+                                                tint = Color(0xFF9C27B0)
+                                            )
+                                        }
+                                        IconButton(onClick = {
+                                            selectedPlaylistForAdd = playlistId
+                                            showAddSongDialog = true
+                                        }) {
+                                            Icon(Icons.Default.Add, null, tint = Color(0xFF4CAF50))
+                                        }
+                                        IconButton(onClick = {
+                                            scope.launch {
+                                                withContext(Dispatchers.IO) {
+                                                    try {
+                                                        api.deleteJson("/api/music/playlists/$playlistId")
+                                                        withContext(Dispatchers.Main) {
+                                                            snackbar.showSnackbar("✅ Playlist supprimée")
+                                                            loadPlaylists()
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        withContext(Dispatchers.Main) {
+                                                            snackbar.showSnackbar("❌ ${e.message}")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Delete, null, tint = Color.Red)
+                                        }
                                     }
                                 }
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            try {
-                                                api.deleteJson("/api/music/playlists/$playlistId")
-                                                withContext(Dispatchers.Main) {
-                                                    snackbar.showSnackbar("✅ Playlist supprimée")
-                                                    loadPlaylists()
-                                                }
-                                            } catch (e: Exception) {
-                                                withContext(Dispatchers.Main) {
-                                                    snackbar.showSnackbar("❌ ${e.message}")
-                                                }
+                                
+                                // Liste des chansons (si expanded)
+                                if (expandedPlaylist == playlistId && songs.isNotEmpty()) {
+                                    Spacer(Modifier.height(12.dp))
+                                    Divider(color = Color(0xFF2E2E2E))
+                                    Spacer(Modifier.height(8.dp))
+                                    
+                                    songs.forEachIndexed { index, song ->
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                                Icon(
+                                                    Icons.Default.MusicNote,
+                                                    null,
+                                                    tint = Color.Gray,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    song,
+                                                    color = Color.White,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    scope.launch {
+                                                        withContext(Dispatchers.IO) {
+                                                            try {
+                                                                // Get song ID from playlist songs array
+                                                                val songObj = songsArray[index].jsonObject
+                                                                val songId = songObj["id"]?.jsonPrimitive?.contentOrNull ?: index.toString()
+                                                                api.deleteJson("/api/music/playlists/$playlistId/songs/$songId")
+                                                                withContext(Dispatchers.Main) {
+                                                                    snackbar.showSnackbar("✅ Chanson retirée")
+                                                                    loadPlaylists()
+                                                                }
+                                                            } catch (e: Exception) {
+                                                                withContext(Dispatchers.Main) {
+                                                                    snackbar.showSnackbar("❌ ${e.message}")
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(Icons.Default.Remove, null, tint = Color(0xFFFF5722), modifier = Modifier.size(16.dp))
                                             }
                                         }
                                     }
-                                }) {
-                                    Icon(Icons.Default.Delete, null, tint = Color.Red)
                                 }
                             }
                         }
                     }
                 }
             }
+        }
+        
+        // Dialog ajouter une chanson
+        if (showAddSongDialog && selectedPlaylistForAdd != null) {
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { 
+                    showAddSongDialog = false
+                    selectedSong = null
+                },
+                title = { Text("Ajouter une chanson") },
+                text = {
+                    Column {
+                        Text("Sélectionnez une chanson à ajouter à la playlist")
+                        Spacer(Modifier.height(16.dp))
+                        
+                        if (availableSongs.isEmpty()) {
+                            Text("Aucune musique disponible", color = Color.Gray)
+                        } else {
+                            LazyColumn(Modifier.heightIn(max = 300.dp)) {
+                                items(availableSongs.size) { index ->
+                                    val song = availableSongs[index]
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .clickable { selectedSong = song }
+                                            .background(if (selectedSong == song) Color(0xFF9C27B0).copy(alpha = 0.3f) else Color.Transparent)
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.MusicNote,
+                                            null,
+                                            tint = if (selectedSong == song) Color(0xFF9C27B0) else Color.Gray,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                        Text(
+                                            song,
+                                            color = if (selectedSong == song) Color.White else Color.Gray,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                    if (index < availableSongs.size - 1) {
+                                        Divider(color = Color(0xFF2E2E2E))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            selectedSong?.let { song ->
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            val body = buildJsonObject {
+                                                put("filename", song)
+                                                put("title", song)
+                                            }
+                                            api.postJson(
+                                                "/api/music/playlists/$selectedPlaylistForAdd/songs",
+                                                json.encodeToString(JsonObject.serializer(), body)
+                                            )
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("✅ Chanson ajoutée")
+                                                showAddSongDialog = false
+                                                selectedSong = null
+                                                loadPlaylists()
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                snackbar.showSnackbar("❌ ${e.message}")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        enabled = selectedSong != null
+                    ) {
+                        Text("Ajouter")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { 
+                        showAddSongDialog = false
+                        selectedSong = null
+                    }) {
+                        Text("Annuler")
+                    }
+                }
+            )
         }
     }
 }
@@ -3161,6 +3334,7 @@ fun getSectionDisplayName(key: String): String {
         "confess" -> "🤫 Confessions"
         "counting" -> "🔢 Comptage"
         "disboard" -> "📢 Disboard"
+        "motCache" -> "🔍 Mot Caché"
         "footerLogoUrl" -> "🖼️ Logo footer"
         "geo" -> "🌍 Géolocalisation"
         "quarantineRoleId" -> "🔒 Rôle quarantaine"

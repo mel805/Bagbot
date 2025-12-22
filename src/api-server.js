@@ -590,15 +590,23 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 app.get('/api/music/uploads', requireAuth, (req, res) => {
   try {
     const uploadsDir = path.join(__dirname, '../data/uploads');
+    console.log('[BOT-API] Looking for uploads in:', uploadsDir);
+    
     if (!fs.existsSync(uploadsDir)) {
+      console.log('[BOT-API] Uploads dir not found, creating...');
+      fs.mkdirSync(uploadsDir, { recursive: true });
       return res.json({ files: [] });
     }
     
-    const files = fs.readdirSync(uploadsDir).filter(file => {
+    const allFiles = fs.readdirSync(uploadsDir);
+    console.log(`[BOT-API] Found ${allFiles.length} total files in uploads`);
+    
+    const files = allFiles.filter(file => {
       const ext = path.extname(file).toLowerCase();
       return ['.mp3', '.wav', '.m4a', '.ogg', '.flac', '.webm'].includes(ext);
     });
     
+    console.log(`[BOT-API] Returning ${files.length} audio files`);
     res.json({ files });
   } catch (error) {
     console.error('[BOT-API] Error listing uploads:', error);
@@ -630,9 +638,17 @@ app.get('/api/music/stream/:filename', (req, res) => {
     const { filename } = req.params;
     const filepath = path.join(__dirname, '../data/uploads', filename);
     
+    console.log('[BOT-API] Streaming request for:', filename);
+    console.log('[BOT-API] Full path:', filepath);
+    console.log('[BOT-API] File exists:', fs.existsSync(filepath));
+    
     if (!fs.existsSync(filepath)) {
+      console.error('[BOT-API] File not found:', filepath);
       return res.status(404).json({ error: 'File not found' });
     }
+    
+    const stat = fs.statSync(filepath);
+    console.log('[BOT-API] File size:', stat.size, 'bytes');
     
     res.sendFile(filepath);
   } catch (error) {

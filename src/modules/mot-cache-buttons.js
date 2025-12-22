@@ -200,6 +200,89 @@ async function handleMotCacheButton(interaction) {
       components: []
     });
   }
+
+  // Ouvrir la config (admin uniquement)
+  if (buttonId === 'motcache_open_config') {
+    if (!interaction.memberPermissions.has('Administrator')) {
+      return interaction.reply({
+        content: '❌ Seuls les administrateurs peuvent configurer le jeu.',
+        ephemeral: true
+      });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('⚙️ Configuration Mot-Caché')
+      .setDescription('────────────────────────────')
+      .addFields(
+        { name: '📊 État', value: motCache.enabled ? '✅ Activé' : '⏸️ Désactivé', inline: true },
+        { name: '🎯 Mot cible', value: motCache.targetWord || 'Non défini', inline: true },
+        { name: '🔍 Emoji', value: motCache.emoji || '🔍', inline: true },
+        { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
+        { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
+        { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
+        { name: '📢 Salon gagnant', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true }
+      )
+      .setColor('#9b59b6');
+
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_toggle')
+        .setLabel(motCache.enabled ? '⏸️ Désactiver' : '▶️ Activer')
+        .setStyle(motCache.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('motcache_setword')
+        .setLabel('🎯 Changer le mot')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('motcache_emoji')
+        .setLabel('🔍 Emoji')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_gamechannels')
+        .setLabel('📋 Salons jeu')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('motcache_letternotifchannel')
+        .setLabel('💬 Salon lettres')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('motcache_winnernotifchannel')
+        .setLabel('📢 Salon gagnant')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row3 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_reset')
+        .setLabel('🔄 Reset jeu')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return interaction.update({
+      embeds: [embed],
+      components: [row1, row2, row3]
+    });
+  }
+
+  // Deviner le mot (modal)
+  if (buttonId === 'motcache_guess_word') {
+    const modal = new ModalBuilder()
+      .setCustomId('motcache_modal_guess')
+      .setTitle('🎯 Deviner le mot caché');
+
+    const wordInput = new TextInputBuilder()
+      .setCustomId('word')
+      .setLabel('Quel est le mot caché ?')
+      .setStyle(TextInputStyle.Short)
+      .setPlaceholder('Entrez votre réponse')
+      .setRequired(true);
+
+    modal.addComponents(new ActionRowBuilder().addComponents(wordInput));
+    return interaction.showModal(modal);
+  }
 }
 
 // Handler pour les modals
@@ -360,6 +443,76 @@ async function handleMotCacheModal(interaction) {
         : '✅ Salon notifications gagnant désactivé',
       ephemeral: true
     });
+  }
+
+  // Modal deviner le mot
+  if (modalId === 'motcache_modal_guess') {
+    const guessedWord = interaction.fields.getTextInputValue('word').toUpperCase().trim();
+    const userId = interaction.user.id;
+    const userLetters = motCache.collections?.[userId] || [];
+
+    if (!motCache.enabled || !motCache.targetWord) {
+      return interaction.reply({
+        content: '❌ Le jeu n\'est plus actif.',
+        ephemeral: true
+      });
+    }
+
+    if (guessedWord === motCache.targetWord.toUpperCase()) {
+      // GAGNÉ !
+      const reward = motCache.rewardAmount || 5000;
+      
+      // Ajouter l'argent
+      if (!guildConfig.economy) guildConfig.economy = { balances: {} };
+      if (!guildConfig.economy.balances) guildConfig.economy.balances = {};
+      if (!guildConfig.economy.balances[userId]) {
+        guildConfig.economy.balances[userId] = { amount: 0, money: 0 };
+      }
+      guildConfig.economy.balances[userId].amount += reward;
+      guildConfig.economy.balances[userId].money += reward;
+
+      // Enregistrer le gagnant
+      if (!motCache.winners) motCache.winners = [];
+      motCache.winners.push({
+        userId,
+        username: interaction.user.username,
+        word: motCache.targetWord,
+        date: Date.now(),
+        reward
+      });
+
+      // Reset le jeu
+      motCache.collections = {};
+      motCache.targetWord = '';
+      motCache.enabled = false;
+
+      guildConfig.motCache = motCache;
+      await writeConfig(config);
+
+      const embed = new EmbedBuilder()
+        .setTitle('🎉 FÉLICITATIONS !')
+        .setDescription(`**Tu as trouvé le mot caché !**\n\n🎯 Mot: **${guessedWord}**\n💰 Récompense: **${reward} BAG$**`)
+        .setColor('#2ecc71')
+        .setFooter({ text: 'Bravo champion !' });
+
+      // Notifier dans le salon de notifications
+      if (motCache.notificationChannel) {
+        const notifChannel = interaction.guild.channels.cache.get(motCache.notificationChannel);
+        if (notifChannel) {
+          notifChannel.send({
+            content: `🎉 <@${userId}> a trouvé le mot caché : **${guessedWord}** et gagne **${reward} BAG$** !`,
+            embeds: [embed]
+          });
+        }
+      }
+
+      return interaction.reply({ embeds: [embed], ephemeral: false });
+    } else {
+      return interaction.reply({
+        content: `❌ Ce n'est pas le bon mot ! Continue à collecter des lettres.\n\n📋 Tes lettres: ${userLetters.join(' ') || 'Aucune'}`,
+        ephemeral: true
+      });
+    }
   }
 }
 
