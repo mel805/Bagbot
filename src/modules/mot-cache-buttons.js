@@ -16,7 +16,9 @@ async function handleMotCacheButton(interaction) {
     emoji: '🔍',
     minMessageLength: 15,
     allowedChannels: [],
-    notificationChannel: null,
+    letterNotificationChannel: null,
+    winnerNotificationChannel: null,
+    rewardAmount: 5000,
     collections: {},
     winners: []
   };
@@ -180,7 +182,7 @@ async function handleMotCacheButton(interaction) {
       .setStyle(TextInputStyle.Short)
       .setPlaceholder('Ex: 123456789')
       .setRequired(false)
-      .setValue(motCache.notificationChannel || '');
+      .setValue(motCache.winnerNotificationChannel || '');
 
     modal.addComponents(new ActionRowBuilder().addComponents(channelInput));
     return interaction.showModal(modal);
@@ -220,7 +222,7 @@ async function handleMotCacheButton(interaction) {
         { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
         { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
         { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
-        { name: '📢 Salon gagnant', value: motCache.notificationChannel ? `<#${motCache.notificationChannel}>` : 'Non configuré', inline: true }
+        { name: '📢 Salon gagnant', value: motCache.winnerNotificationChannel ? `<#${motCache.winnerNotificationChannel}>` : 'Non configuré', inline: true }
       )
       .setColor('#9b59b6');
 
@@ -448,7 +450,7 @@ async function handleMotCacheModal(interaction) {
     const channelId = interaction.fields.getTextInputValue('channel').trim();
     
     if (channelId === '') {
-      motCache.notificationChannel = null;
+      motCache.winnerNotificationChannel = null;
     } else {
       // Vérifier que le salon existe
       const channel = interaction.guild.channels.cache.get(channelId);
@@ -458,15 +460,15 @@ async function handleMotCacheModal(interaction) {
           ephemeral: true
         });
       }
-      motCache.notificationChannel = channelId;
+      motCache.winnerNotificationChannel = channelId;
     }
     
     guildConfig.motCache = motCache;
     await writeConfig(config);
 
     return interaction.reply({
-      content: motCache.notificationChannel 
-        ? `✅ Salon notifications gagnant : <#${motCache.notificationChannel}>` 
+      content: motCache.winnerNotificationChannel 
+        ? `✅ Salon notifications gagnant : <#${motCache.winnerNotificationChannel}>` 
         : '✅ Salon notifications gagnant désactivé',
       ephemeral: true
     });
@@ -523,8 +525,8 @@ async function handleMotCacheModal(interaction) {
         .setFooter({ text: 'Bravo champion !' });
 
       // Notifier dans le salon de notifications
-      if (motCache.notificationChannel) {
-        const notifChannel = interaction.guild.channels.cache.get(motCache.notificationChannel);
+      if (motCache.winnerNotificationChannel) {
+        const notifChannel = interaction.guild.channels.cache.get(motCache.winnerNotificationChannel);
         if (notifChannel) {
           notifChannel.send({
             content: `🎉 <@${userId}> a trouvé le mot caché : **${guessedWord}** et gagne **${reward} BAG$** !`,

@@ -63,6 +63,27 @@ jobs:
         body: |
           ## 🎉 BAG Bot Manager ${{ github.ref_name }}
           
+          ### ✨ NOUVEAUTÉS v5.9.14 - Chat Staff Amélioré !
+          
+          #### 🔔 Notifications Push (NOUVEAU!)
+          - **Alertes automatiques**: Recevez une notification pour chaque nouveau message du chat staff
+          - **Format**: `💬 Chat Staff - [Nom] : [Message]`
+          - **Smart**: Pas de notification pour vos propres messages
+          - **Son & Vibration**: Notifications complètes avec retour haptique
+          - **Canal dédié**: Canal de notification "Chat Staff" avec priorité haute
+          
+          #### 📢 Système de Mention @ (NOUVEAU!)
+          - **Bouton @**: Mentionnez facilement les membres du staff
+          - **Liste intelligente**: Voir tous les admins en ligne
+          - **Insertion automatique**: Clic sur un nom l'insère dans votre message
+          - **Format Discord**: `@NomAdmin` comme sur Discord
+          
+          #### 🧹 Interface Chat Staff Épurée
+          - **❌ Retiré**: Boutons `/actionverite` et `/motcache` (non pertinents pour chat staff)
+          - **✅ Ajouté**: Bouton @ Mention pour ping facile
+          - **✅ Conservé**: Bouton 📎 Fichier (à venir)
+          - **Plus propre**: Interface focalisée sur la communication staff
+          
           ### ✨ CORRECTIONS MAJEURES v5.9.10 - Stabilité & Fixes !
           
           #### 🚨 Fixes Critiques (NOUVEAU!)
@@ -186,10 +207,17 @@ jobs:
           http://88.174.155.230:33002
           
           ### 📊 Informations Techniques
-          - **Version**: 5.9.10 (versionCode 5910)
+          - **Version**: 5.9.14 (versionCode 5914)
           - **Min SDK**: 26 (Android 8.0)
           - **Target SDK**: 34 (Android 14)
           - **Taille**: ~15-25 MB
+          - **Nouveautés**: Notifications push + Mentions + Interface épurée
+          
+          ### 🎁 Nouveautés v5.9.14
+          - ✅ **Notifications Push**: Alertes pour nouveaux messages chat staff
+          - ✅ **Système @ Mention**: Ping facile des membres avec bouton dédié
+          - ✅ **Interface Épurée**: Retrait des commandes Discord non pertinentes
+          - ✅ **Smart Notifications**: Détection intelligente (pas pour ses propres messages)
           
           ### 🐛 Corrections de bugs v5.9.10
           - ✅ **URL Placeholder**: Port 33003 au lieu de 33002

@@ -77,7 +77,7 @@ async function handleMessage(message) {
             `🔍 **${message.author} a trouvé une lettre cachée !**\n\n` +
             `Lettre: **${letter}**\n` +
             `Progression: ${motCache.collections[message.author.id].length}/${targetWord.length}\n` +
-            `💡 Utilise \`/mot-cache deviner <mot>\` quand tu penses avoir trouvé !`
+            `💡 Utilise \`/mot-cache\` puis clique sur "✍️ Entrer le mot" quand tu penses avoir trouvé !`
           );
           
           // Supprimer après 15 secondes
