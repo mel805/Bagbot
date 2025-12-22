@@ -261,41 +261,35 @@ async function handleMotCacheButton(interaction) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    // Vérifier si l'interaction peut être mise à jour ou si on doit répondre
+    // Utiliser update() car c'est un bouton d'un message existant
     try {
-      if (interaction.deferred) {
-        return interaction.editReply({
+      return await interaction.update({
+        embeds: [embed],
+        components: [row1, row2, row3]
+      });
+    } catch (err) {
+      console.error('[MOT-CACHE] Error updating config button:', err);
+      // Fallback: essayer un defer + editReply
+      try {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.deferUpdate();
+        }
+        return await interaction.editReply({
           embeds: [embed],
           components: [row1, row2, row3]
         });
-      } else if (interaction.replied) {
-        return interaction.followUp({
-          embeds: [embed],
-          components: [row1, row2, row3],
-          ephemeral: true
-        });
-      } else {
-        return interaction.reply({
-          embeds: [embed],
-          components: [row1, row2, row3],
-          ephemeral: true
-        });
-      }
-    } catch (err) {
-      console.error('[MOT-CACHE] Error responding to config button:', err);
-      // Fallback: essayer de répondre
-      try {
-        return interaction.reply({
-          embeds: [embed],
-          components: [row1, row2, row3],
-          ephemeral: true
-        });
-      } catch (_) {
-        return interaction.followUp({
-          embeds: [embed],
-          components: [row1, row2, row3],
-          ephemeral: true
-        });
+      } catch (err2) {
+        console.error('[MOT-CACHE] Fallback also failed:', err2);
+        // Dernier recours: répondre avec un nouveau message
+        try {
+          return await interaction.followUp({
+            embeds: [embed],
+            components: [row1, row2, row3],
+            ephemeral: true
+          });
+        } catch (err3) {
+          console.error('[MOT-CACHE] All attempts failed:', err3);
+        }
       }
     }
   }
