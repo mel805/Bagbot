@@ -60,6 +60,7 @@ private enum class DashTab(val label: String) {
     AutoThread("🧵 AutoThread"),
     Disboard("📢 Disboard"),
     Geo("🌍 Géo"),
+    MotCache("🔍 Mot-Caché"),
     Backups("💾 Backups"),
     Control("🎮 Contrôle"),
     Music("🎵 Musique"),
@@ -148,6 +149,7 @@ fun ConfigDashboardScreen(
                 DashTab.Booster -> BoosterConfigTab(configData, roles, api, json, scope, snackbar)
                 DashTab.Counting -> CountingConfigTab(configData, channels, api, json, scope, snackbar)
                 DashTab.TruthDare -> TruthDareConfigTab(channels, api, json, scope, snackbar)
+                DashTab.MotCache -> MotCacheConfigTab(configData, channels, api, json, scope, snackbar)
                 DashTab.Actions -> ActionsConfigTab(configData, api, json, scope, snackbar)
                 DashTab.Tickets -> TicketsConfigTab(configData, channels, roles, api, json, scope, snackbar)
                 DashTab.Logs -> LogsConfigTab(configData, members, channels, roles, api, json, scope, snackbar)
@@ -3444,6 +3446,275 @@ private fun MusicTab(
                             }
                         }
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MotCacheConfigTab(
+    configData: JsonObject?,
+    channels: Map<String, String>,
+    api: ApiClient,
+    json: Json,
+    scope: kotlinx.coroutines.CoroutineScope,
+    snackbar: SnackbarHostState
+) {
+    val motCache = configData?.obj("motCache")
+    var enabled by remember { mutableStateOf(motCache?.bool("enabled") ?: false) }
+    var targetWord by remember { mutableStateOf(motCache?.str("targetWord") ?: "") }
+    var emoji by remember { mutableStateOf(motCache?.str("emoji") ?: "🔍") }
+    var rewardAmount by remember { mutableStateOf(motCache?.int("rewardAmount")?.toString() ?: "5000") }
+    var minMessageLength by remember { mutableStateOf(motCache?.int("minMessageLength")?.toString() ?: "15") }
+    
+    val initialAllowedChannels = remember(motCache) {
+        motCache?.arr("allowedChannels")?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+    }
+    var allowedChannels by remember(initialAllowedChannels) { mutableStateOf(initialAllowedChannels) }
+    var newChannelId by remember { mutableStateOf<String?>(null) }
+    
+    var letterNotifChannel by remember { mutableStateOf(motCache?.str("letterNotificationChannel")) }
+    var winnerNotifChannel by remember { mutableStateOf(motCache?.str("notificationChannel")) }
+    
+    var isSaving by remember { mutableStateOf(false) }
+
+    LazyColumn(
+        Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Header
+        item {
+            Card(
+                Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF9b59b6))
+            ) {
+                Row(
+                    Modifier.fillMaxWidth().padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Search, null, tint = Color.White, modifier = Modifier.size(40.dp))
+                    Spacer(Modifier.width(16.dp))
+                    Column {
+                        Text("🔍 Mot Caché", style = MaterialTheme.typography.headlineSmall, color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Jeu de collecte de lettres", style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
+                    }
+                }
+            }
+        }
+
+        // Activation
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("📊 Activer le jeu", style = MaterialTheme.typography.titleMedium)
+                    Switch(checked = enabled, onCheckedChange = { enabled = it })
+                }
+            }
+        }
+
+        // Mot cible
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("🎯 Mot à trouver", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = targetWord,
+                        onValueChange = { targetWord = it.uppercase() },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Mot caché (majuscules)") },
+                        placeholder = { Text("Ex: CALIN, BOUTEILLE") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "⚠️ Changer le mot réinitialise toutes les collections",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+
+        // Récompense et paramètres
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("💰 Récompense", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = rewardAmount,
+                        onValueChange = { if (it.all { c -> c.isDigit() }) rewardAmount = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Montant BAG$") },
+                        placeholder = { Text("5000") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("🔍 Emoji", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = emoji,
+                        onValueChange = { emoji = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Emoji de réaction") },
+                        placeholder = { Text("🔍") },
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("📏 Longueur minimale message", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = minMessageLength,
+                        onValueChange = { if (it.all { c -> c.isDigit() }) minMessageLength = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Caractères minimum") },
+                        placeholder = { Text("15") },
+                        singleLine = true
+                    )
+                }
+            }
+        }
+
+        // Salons de jeu
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("📋 Salons de jeu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        if (allowedChannels.isEmpty()) "Tous les salons" else "${allowedChannels.size} salon(s) configuré(s)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    
+                    ChannelSelector(
+                        channels = channels,
+                        selectedChannelId = newChannelId,
+                        onChannelSelected = { newChannelId = it },
+                        label = "Ajouter un salon"
+                    )
+                    
+                    if (newChannelId != null && newChannelId !in allowedChannels) {
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            onClick = {
+                                newChannelId?.let { id ->
+                                    allowedChannels = allowedChannels + id
+                                    newChannelId = null
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Add, null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Ajouter")
+                        }
+                    }
+                    
+                    Spacer(Modifier.height(8.dp))
+                    allowedChannels.forEach { chId ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(channels[chId] ?: chId, color = Color.White)
+                            IconButton(onClick = { allowedChannels = allowedChannels.filter { it != chId } }) {
+                                Icon(Icons.Default.Delete, null, tint = Color.Red, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Salon notifications lettres
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("💬 Salon notifications lettres", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Salon où annoncer les lettres découvertes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ChannelSelector(
+                        channels = channels,
+                        selectedChannelId = letterNotifChannel,
+                        onChannelSelected = { letterNotifChannel = it },
+                        label = "Sélectionner un salon"
+                    )
+                }
+            }
+        }
+
+        // Salon notifications gagnant
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("📢 Salon notifications gagnant", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Salon où annoncer le gagnant",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ChannelSelector(
+                        channels = channels,
+                        selectedChannelId = winnerNotifChannel,
+                        onChannelSelected = { winnerNotifChannel = it },
+                        label = "Sélectionner un salon"
+                    )
+                }
+            }
+        }
+
+        // Save button
+        item {
+            Button(
+                onClick = {
+                    scope.launch {
+                        isSaving = true
+                        withContext(Dispatchers.IO) {
+                            try {
+                                val body = buildJsonObject {
+                                    put("enabled", enabled)
+                                    put("targetWord", targetWord.uppercase())
+                                    put("emoji", emoji)
+                                    put("rewardAmount", rewardAmount.toIntOrNull() ?: 5000)
+                                    put("minMessageLength", minMessageLength.toIntOrNull() ?: 15)
+                                    put("allowedChannels", JsonArray(allowedChannels.map { JsonPrimitive(it) }))
+                                    letterNotifChannel?.let { put("letterNotificationChannel", it) }
+                                    winnerNotifChannel?.let { put("notificationChannel", it) }
+                                }
+                                api.putJson("/api/configs/motCache", json.encodeToString(JsonObject.serializer(), body))
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Mot-Caché sauvegardé") }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
+                            } finally {
+                                withContext(Dispatchers.Main) { isSaving = false }
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                enabled = !isSaving && targetWord.isNotBlank()
+            ) {
+                if (isSaving) CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White)
+                else {
+                    Icon(Icons.Default.Save, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Sauvegarder Mot-Caché")
                 }
             }
         }
