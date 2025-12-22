@@ -1472,13 +1472,42 @@ function startApiServer(client) {
   // Stocker le client Discord pour l'utiliser dans les routes
   app.locals.client = client;
   
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`✅ [BOT-API] Server running on port ${PORT}`);
     console.log(`✅ [BOT-API] Guild ID: ${GUILD}`);
-    console.log(`✅ [BOT-API] Access: http://localhost:${PORT}`);
+    console.log(`✅ [BOT-API] Access: http://0.0.0.0:${PORT}`);
   });
   
   return app;
 }
 
 module.exports = { startApiServer };
+
+// Si lancé directement (pas importé), démarrer en standalone
+if (require.main === module) {
+  console.log('🚀 [BOT-API] Starting in standalone mode...');
+  const { Client, GatewayIntentBits } = require('discord.js');
+  
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages
+    ]
+  });
+  
+  const token = process.env.DISCORD_TOKEN || process.env.BOT_TOKEN;
+  if (!token) {
+    console.error('❌ [BOT-API] No Discord token found in environment variables');
+    process.exit(1);
+  }
+  client.login(token)
+    .then(() => {
+      console.log('✅ [BOT-API] Discord client ready');
+      startApiServer(client);
+    })
+    .catch(err => {
+      console.error('❌ [BOT-API] Failed to connect to Discord:', err);
+      process.exit(1);
+    });
+}
