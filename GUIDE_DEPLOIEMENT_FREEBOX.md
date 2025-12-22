@@ -2,7 +2,7 @@
 
 ## ⚠️ Contexte
 
-La Freebox (`82.67.65.98:22222`) n'est **pas accessible depuis l'environnement cloud Cursor**. Le déploiement doit être effectué soit :
+La Freebox (`82.67.65.98:33000`) n'est **pas accessible depuis l'environnement cloud Cursor**. Le déploiement doit être effectué soit :
 1. **Depuis une machine ayant accès SSH à la Freebox** (réseau local ou VPN)
 2. **Directement sur la Freebox** (connexion SSH puis exécution locale)
 
@@ -29,7 +29,7 @@ Le script va :
 ### Méthode B : Commande SSH unique
 
 ```bash
-ssh -p 22222 bagbot@82.67.65.98 'cd /home/bagbot/Bag-bot && node deploy-commands.js'
+ssh -p 33000 bagbot@82.67.65.98 'cd /home/bagbot/Bag-bot && node deploy-commands.js'
 ```
 
 ---
@@ -39,7 +39,7 @@ ssh -p 22222 bagbot@82.67.65.98 'cd /home/bagbot/Bag-bot && node deploy-commands
 ### Étape 1 : Connexion SSH à la Freebox
 
 ```bash
-ssh -p 22222 bagbot@82.67.65.98
+ssh -p 33000 bagbot@82.67.65.98
 # Mot de passe : bagbot
 ```
 
@@ -126,7 +126,7 @@ node verify-commands.js
 **Solution** : Vérifier le fichier `.env` sur la Freebox
 
 ```bash
-ssh -p 22222 bagbot@82.67.65.98
+ssh -p 33000 bagbot@82.67.65.98
 cd /home/bagbot/Bag-bot
 cat .env | grep -E "(DISCORD_TOKEN|CLIENT_ID)"
 ```
@@ -141,7 +141,7 @@ CLIENT_ID=1414216173809307780
 
 **Causes possibles** :
 1. La Freebox est éteinte ou hors ligne
-2. Le port SSH (22222) est bloqué par un pare-feu
+2. Le port SSH (33000) est bloqué par un pare-feu
 3. L'adresse IP a changé (vérifier sur mafreebox.freebox.fr)
 
 **Solution** : Vérifier l'accès réseau
@@ -149,7 +149,7 @@ CLIENT_ID=1414216173809307780
 ```bash
 # Depuis votre machine locale :
 ping 82.67.65.98
-nc -zv 82.67.65.98 22222
+nc -zv 82.67.65.98 33000
 ```
 
 ### ❌ Les commandes n'apparaissent pas en MP
@@ -207,17 +207,17 @@ En cas de problème persistant :
 
 1. **Vérifier les logs du bot** :
    ```bash
-   ssh -p 22222 bagbot@82.67.65.98 'pm2 logs bagbot --lines 50'
+   ssh -p 33000 bagbot@82.67.65.98 'pm2 logs bagbot --lines 50'
    ```
 
 2. **Vérifier le statut du bot** :
    ```bash
-   ssh -p 22222 bagbot@82.67.65.98 'pm2 status'
+   ssh -p 33000 bagbot@82.67.65.98 'pm2 status'
    ```
 
 3. **Redémarrer le bot** (si nécessaire) :
    ```bash
-   ssh -p 22222 bagbot@82.67.65.98 'pm2 restart bagbot'
+   ssh -p 33000 bagbot@82.67.65.98 'pm2 restart bagbot'
    ```
 
 ---
