@@ -210,12 +210,24 @@ async function handleMotCacheButton(interaction) {
   if (buttonId === 'motcache_open_config') {
     console.log(`[MOT-CACHE-HANDLER] Bouton config détecté`);
     
+    // Vérifier les permissions AVANT de déférer
     if (!interaction.memberPermissions.has('Administrator')) {
       console.log(`[MOT-CACHE-HANDLER] Utilisateur non admin`);
       return interaction.reply({
         content: '❌ Seuls les administrateurs peuvent configurer le jeu.',
         ephemeral: true
       });
+    }
+
+    // IMPORTANT: Déférer immédiatement l'interaction pour éviter le timeout
+    console.log(`[MOT-CACHE-HANDLER] Différer l'interaction...`);
+    try {
+      await interaction.deferUpdate();
+      console.log(`[MOT-CACHE-HANDLER] ✅ Interaction différée`);
+    } catch (deferErr) {
+      console.error('[MOT-CACHE-HANDLER] ❌ Erreur defer:', deferErr.message);
+      // Si on ne peut pas déférer, c'est probablement déjà trop tard
+      return;
     }
 
     console.log(`[MOT-CACHE-HANDLER] Construction de l'embed config`);
@@ -271,19 +283,19 @@ async function handleMotCacheButton(interaction) {
         .setStyle(ButtonStyle.Danger)
     );
 
-    console.log(`[MOT-CACHE-HANDLER] Tentative update (ephemeral button)`);
+    console.log(`[MOT-CACHE-HANDLER] Tentative editReply (après defer)`);
     
-    // SOLUTION DÉFINITIVE: Pour un bouton venant d'un message ephemeral de commande slash,
-    // il FAUT utiliser interaction.update() - c'est la seule méthode qui fonctionne
+    // Après avoir différé, on utilise editReply au lieu de update
     try {
-      await interaction.update({
+      await interaction.editReply({
+        content: null, // Enlever le contenu précédent s'il y en avait
         embeds: [embed],
         components: [row1, row2, row3]
       });
-      console.log(`[MOT-CACHE-HANDLER] ✅ Update réussi`);
+      console.log(`[MOT-CACHE-HANDLER] ✅ EditReply réussi`);
       return;
     } catch (err) {
-      console.error('[MOT-CACHE-HANDLER] ❌ Erreur update:', err.message);
+      console.error('[MOT-CACHE-HANDLER] ❌ Erreur editReply:', err.message);
       console.error('[MOT-CACHE-HANDLER] Code erreur:', err.code);
       console.error('[MOT-CACHE-HANDLER] Stack complète:', err.stack);
       
@@ -296,16 +308,14 @@ async function handleMotCacheButton(interaction) {
         console.error('[MOT-CACHE-HANDLER] ⚠️ PROBLÈME: Erreur inconnue');
       }
       
-      // Répondre à l'utilisateur avec l'erreur
+      // Essayer de répondre à l'utilisateur avec l'erreur via followUp car on a déjà defer
       try {
-        if (!interaction.replied && !interaction.deferred) {
-          await interaction.reply({
-            content: `❌ Erreur d'interaction: ${err.message}\n\nRéessayez la commande \`/mot-cache\``,
-            ephemeral: true
-          });
-        }
+        await interaction.followUp({
+          content: `❌ Erreur d'interaction: ${err.message}\n\nRéessayez la commande \`/mot-cache\``,
+          ephemeral: true
+        });
       } catch (e) {
-        console.error('[MOT-CACHE-HANDLER] ❌ Impossible de répondre:', e.message);
+        console.error('[MOT-CACHE-HANDLER] ❌ Impossible de followUp:', e.message);
       }
     }
   }
