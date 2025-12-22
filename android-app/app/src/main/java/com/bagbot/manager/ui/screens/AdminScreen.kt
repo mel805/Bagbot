@@ -18,6 +18,10 @@ import androidx.compose.ui.unit.dp
 import com.bagbot.manager.ApiClient
 import com.bagbot.manager.ui.components.MemberSelector
 import com.bagbot.manager.ui.theme.*
+import com.bagbot.manager.safeString
+import com.bagbot.manager.safeBoolean
+import com.bagbot.manager.safeStringList
+import com.bagbot.manager.safeObjectList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,7 +29,7 @@ import kotlinx.serialization.json.*
 
 // Helper pour extraire une chaîne d'un JsonElement (primitive ou objet avec id)
 private fun JsonElement.stringOrId(): String? {
-    return this.jsonPrimitive?.contentOrNull ?: this.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+    return this.safeString()
 }
 
 @Composable
@@ -431,14 +435,12 @@ fun SessionsTab(
                     // Charger les sessions
                     val resp = api.getJson("/api/admin/sessions")
                     val obj = json.parseToJsonElement(resp).jsonObject
-                    val sessionsList = obj["sessions"]?.jsonArray?.mapNotNull { it.jsonObject } ?: emptyList()
+                    val sessionsList = obj["sessions"]?.jsonArray.safeObjectList()
                     
                     // Charger la config pour les rôles staff
                     val configResp = api.getJson("/api/configs")
                     val config = json.parseToJsonElement(configResp).jsonObject
-                    val staffRoles = config["staffRoleIds"]?.jsonArray?.mapNotNull { 
-                        it.jsonPrimitive.contentOrNull 
-                    } ?: emptyList()
+                    val staffRoles = config["staffRoleIds"]?.jsonArray.safeStringList()
                     
                     // Charger les fondateurs (hardcoded pour l'instant)
                     val founders = listOf("943487722738311219")
@@ -539,12 +541,12 @@ fun SessionsTab(
         
         if (!isLoading && sessions.isNotEmpty()) {
             items(sessions) { session ->
-                val userId = session["userId"]?.jsonPrimitive?.contentOrNull ?: ""
+                val userId = session["userId"].safeString() ?: ""
                 val userRolesList = session["roles"]?.jsonArray?.mapNotNull { 
-                    it.jsonPrimitive.contentOrNull 
+                    it.safeString()
                 } ?: emptyList()
-                val lastSeen = session["lastSeen"]?.jsonPrimitive?.contentOrNull ?: ""
-                val isOnline = session["isOnline"]?.jsonPrimitive?.booleanOrNull ?: false
+                val lastSeen = session["lastSeen"].safeString() ?: ""
+                val isOnline = session["isOnline"].safeBoolean() ?: false
                 
                 // Déterminer le rôle (même logique que BotControlScreen)
                 val role = when {

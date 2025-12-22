@@ -48,6 +48,14 @@ import com.bagbot.manager.ui.theme.BagBotTheme
 import com.bagbot.manager.ui.screens.SplashScreen
 import com.bagbot.manager.ui.screens.ConfigDashboardScreen
 import com.bagbot.manager.ui.components.MemberSelector
+import com.bagbot.manager.safeString
+import com.bagbot.manager.safeInt
+import com.bagbot.manager.safeBoolean
+import com.bagbot.manager.safeStringOrEmpty
+import com.bagbot.manager.safeIntOrZero
+import com.bagbot.manager.safeBooleanOrFalse
+import com.bagbot.manager.safeStringList
+import com.bagbot.manager.safeObjectList
 import com.bagbot.manager.ui.components.ChannelSelector
 import com.bagbot.manager.ui.components.RoleSelector
 
@@ -142,8 +150,8 @@ fun EconomyFullScreen(
                         balances = data["balances"]?.jsonArray?.map {
                             val obj = it.jsonObject
                             UserBalance(
-                                userId = obj["userId"]?.jsonPrimitive?.content ?: "",
-                                amount = obj["amount"]?.jsonPrimitive?.int ?: 0
+                                userId = obj["userId"].safeStringOrEmpty(),
+                                amount = obj["amount"].safeIntOrZero()
                             )
                         }?.sortedByDescending { it.amount } ?: emptyList()
                     }
@@ -255,8 +263,8 @@ fun LevelsFullScreen(
                         leaderboard = data["leaderboard"]?.jsonArray?.map {
                             val obj = it.jsonObject
                             UserLevel(
-                                userId = obj["userId"]?.jsonPrimitive?.content ?: "",
-                                xp = obj["xp"]?.jsonPrimitive?.int ?: 0,
+                                userId = obj["userId"].safeStringOrEmpty(),
+                                xp = obj["xp"].safeIntOrZero(),
                                 level = obj["level"]?.jsonPrimitive?.int ?: 0,
                                 messages = obj["messages"]?.jsonPrimitive?.int ?: 0
                             )
@@ -371,8 +379,8 @@ fun FunFullScreen(
                     val data = json.parseToJsonElement(response).jsonObject
                     val prompts = data["prompts"]?.jsonObject
                     withContext(Dispatchers.Main) {
-                        truthPrompts = prompts?.get("truth")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
-                        darePrompts = prompts?.get("dare")?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()
+                        truthPrompts = prompts?.get("truth")?.jsonArray.safeStringList()
+                        darePrompts = prompts?.get("dare")?.jsonArray.safeStringList()
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
@@ -514,15 +522,15 @@ fun StaffChatScreen(
                         messages = data["messages"]?.jsonArray?.map {
                             val msg = it.jsonObject
                             StaffMessage(
-                                id = msg["id"]?.jsonPrimitive?.content ?: "",
-                                userId = msg["userId"]?.jsonPrimitive?.content ?: "",
-                                username = msg["username"]?.jsonPrimitive?.content ?: "Inconnu",
-                                message = msg["message"]?.jsonPrimitive?.content ?: "",
-                                timestamp = msg["timestamp"]?.jsonPrimitive?.content ?: "",
-                                type = msg["type"]?.jsonPrimitive?.content ?: "text",
-                                attachmentUrl = msg["attachmentUrl"]?.jsonPrimitive?.contentOrNull,
-                                attachmentType = msg["attachmentType"]?.jsonPrimitive?.contentOrNull,
-                                room = msg["room"]?.jsonPrimitive?.content ?: "global"
+                                id = msg["id"].safeStringOrEmpty(),
+                                userId = msg["userId"].safeStringOrEmpty(),
+                                username = msg["username"].safeString() ?: "Inconnu",
+                                message = msg["message"].safeStringOrEmpty(),
+                                timestamp = msg["timestamp"].safeStringOrEmpty(),
+                                type = msg["type"].safeString() ?: "text",
+                                attachmentUrl = msg["attachmentUrl"].safeString(),
+                                attachmentType = msg["attachmentType"].safeString(),
+                                room = msg["room"].safeString() ?: "global"
                             )
                         } ?: emptyList()
                     }
@@ -559,8 +567,8 @@ fun StaffChatScreen(
             isSending = true
             withContext(Dispatchers.IO) {
                 try {
-                    val userId = userInfo?.get("id")?.jsonPrimitive?.content ?: "unknown"
-                    val username = userInfo?.get("username")?.jsonPrimitive?.content ?: "Inconnu"
+                    val userId = userInfo?.get("id").safeString() ?: "unknown"
+                    val username = userInfo?.get("username").safeString() ?: "Inconnu"
                     val body = buildJsonObject {
                         put("userId", userId)
                         put("username", username)
@@ -654,9 +662,9 @@ fun StaffChatScreen(
                     
                     // Liste des admins en ligne
                     onlineAdmins.forEach { admin ->
-                        val adminId = admin["userId"]?.jsonPrimitive?.content ?: ""
-                        val adminName = members[adminId] ?: admin["username"]?.jsonPrimitive?.content ?: "Inconnu"
-                        val currentUserId = userInfo?.get("id")?.jsonPrimitive?.content ?: ""
+                        val adminId = admin["userId"].safeStringOrEmpty()
+                        val adminName = members[adminId] ?: admin["username"].safeString() ?: "Inconnu"
+                        val currentUserId = userInfo?.get("id").safeStringOrEmpty()
                         
                         if (adminId != currentUserId) {
                             val roomId = if (currentUserId < adminId) "user-$currentUserId-$adminId" else "user-$adminId-$currentUserId"
@@ -692,7 +700,7 @@ fun StaffChatScreen(
             } else {
                 items(messages) { msg ->
                     val memberName = members[msg.userId] ?: msg.username
-                    val isCurrentUser = userInfo?.get("id")?.jsonPrimitive?.content == msg.userId
+                    val isCurrentUser = userInfo?.get("id").safeString() == msg.userId
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isCurrentUser) Color(0xFF5865F2).copy(alpha = 0.2f) else Color(0xFF2A2A2A))) {
                         Column(Modifier.padding(12.dp)) {
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -1053,12 +1061,12 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     withContext(Dispatchers.Main) {
                         // L'API retourne { "members": {...}, "roles": {...} }
                         membersData["members"]?.jsonObject?.let { membersObj ->
-                            members = membersObj.mapValues { it.value.jsonPrimitive.content }
+                            members = membersObj.mapValues { it.value.safeStringOrEmpty() }
                         }
                         
                         membersData["roles"]?.jsonObject?.let { rolesObj ->
                             memberRoles = rolesObj.mapValues { (_, v) ->
-                                v.jsonArray.map { it.jsonPrimitive.content }
+                                v.jsonArray.safeStringList()
                             }
                         }
                     }
@@ -1075,7 +1083,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     Log.d(TAG, "Response /api/discord/channels: ${channelsJson.take(100)}")
                     val channelsObj = json.parseToJsonElement(channelsJson).jsonObject
                     withContext(Dispatchers.Main) {
-                        channels = channelsObj.mapValues { it.value.jsonPrimitive.content }
+                        channels = channelsObj.mapValues { it.value.safeStringOrEmpty() }
                     }
                     Log.d(TAG, "Loaded ${channels.size} channels")
                 } catch (e: Exception) {
@@ -1090,7 +1098,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     Log.d(TAG, "Response /api/discord/roles: ${rolesJson.take(100)}")
                     val rolesObj = json.parseToJsonElement(rolesJson).jsonObject
                     withContext(Dispatchers.Main) {
-                        roles = rolesObj.mapValues { it.value.jsonPrimitive.content }
+                        roles = rolesObj.mapValues { it.value.safeStringOrEmpty() }
                     }
                     Log.d(TAG, "Loaded ${roles.size} roles")
                 } catch (e: Exception) {
@@ -1132,9 +1140,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 try {
                     val allowedJson = api.getJson("/api/admin/allowed-users")
                     val allowedData = json.parseToJsonElement(allowedJson).jsonObject
-                    val allowedUsers = allowedData["allowedUsers"]?.jsonArray?.map {
-                        it.jsonPrimitive.content
-                    } ?: emptyList()
+                    val allowedUsers = allowedData["allowedUsers"]?.jsonArray.safeStringList()
                     
                     withContext(Dispatchers.Main) {
                         isAuthorized = userId in allowedUsers || isFounder
@@ -1487,9 +1493,7 @@ fun BotControlScreen(
                     try {
                         val configResp = api.getJson("/api/configs")
                         val config = json.parseToJsonElement(configResp).jsonObject
-                        val staffRoles = config["staffRoleIds"]?.jsonArray?.mapNotNull { 
-                            it.jsonPrimitive.contentOrNull 
-                        } ?: emptyList()
+                        val staffRoles = config["staffRoleIds"]?.jsonArray.safeStringList()
                         staffRoleIds = staffRoles
                     } catch (e: Exception) {
                         Log.e("BotControl", "Erreur chargement staffRoleIds: ${e.message}")
@@ -1508,9 +1512,7 @@ fun BotControlScreen(
                         val username = session["username"]?.jsonPrimitive?.contentOrNull ?: members[userId] ?: "Inconnu"
                         
                         // Calculer le rôle côté client
-                        val userRoles = session["roles"]?.jsonArray?.mapNotNull {
-                            it.jsonPrimitive.contentOrNull
-                        } ?: emptyList()
+                        val userRoles = session["roles"]?.jsonArray.safeStringList()
                         
                         Log.d("BotControl", "User $username ($userId) has ${userRoles.size} roles, staffRoles: ${staffRoleIds.size}")
                         
@@ -1990,9 +1992,7 @@ fun MusicScreen(
                 try {
                     val response = api.getJson("/api/music/uploads")
                     val data = json.parseToJsonElement(response).jsonObject
-                    val files = data["files"]?.jsonArray?.mapNotNull { 
-                        it.jsonPrimitive.contentOrNull 
-                    } ?: emptyList()
+                    val files = data["files"]?.jsonArray.safeStringList()
                     withContext(Dispatchers.Main) {
                         uploads = files
                     }
@@ -3231,7 +3231,7 @@ fun renderKeyInfo(
                     keyInfos.add("📋 Canal panel" to "${channels[id] ?: "Inconnu"} ($id)")
                 }
                 obj["staffPingRoleIds"]?.jsonArray?.let { arr ->
-                    val roleNames = arr.mapNotNull { it.jsonPrimitive.contentOrNull }.map { id ->
+                    val roleNames = arr.safeStringList().map { id ->
                         roles[id] ?: id
                     }.joinToString(", ")
                     keyInfos.add("👮 Rôles staff ping" to roleNames)
@@ -3249,7 +3249,7 @@ fun renderKeyInfo(
             "logs" -> {
                 val obj = sectionData.jsonObject
                 obj["channels"]?.jsonObject?.forEach { (logType, channelIdEl) ->
-                    val channelId = channelIdEl.jsonPrimitive.contentOrNull
+                    val channelId = channelIdEl.safeString()
                     if (channelId != null) {
                         keyInfos.add("📝 $logType" to "${channels[channelId] ?: "Inconnu"} ($channelId)")
                     }
@@ -3257,7 +3257,7 @@ fun renderKeyInfo(
             }
             "staffRoleIds" -> {
                 val arr = sectionData.jsonArray
-                val roleNames = arr.mapNotNull { it.jsonPrimitive.contentOrNull }.map { id ->
+                val roleNames = arr.safeStringList().map { id ->
                     "${roles[id] ?: "Inconnu"} ($id)"
                 }
                 roleNames.forEach { name ->
@@ -3265,7 +3265,7 @@ fun renderKeyInfo(
                 }
             }
             "quarantineRoleId" -> {
-                val roleId = sectionData.jsonPrimitive.contentOrNull
+                val roleId = sectionData.safeString()
                 if (roleId != null) {
                     keyInfos.add("🔒 Rôle quarantaine" to "${roles[roleId] ?: "Inconnu"} ($roleId)")
                 }
@@ -3536,7 +3536,7 @@ fun DashboardUrlCard(
             try {
                 val response = api.getJson("/api/admin/app-config")
                 val data = json.parseToJsonElement(response).jsonObject
-                val url = data["dashboardUrl"]?.jsonPrimitive?.content ?: ""
+                val url = data["dashboardUrl"].safeStringOrEmpty()
                 withContext(Dispatchers.Main) {
                     dashboardUrl = url
                     editedUrl = url
@@ -3742,9 +3742,7 @@ fun AdminScreenWithAccess(
                 val response = api.getJson("/api/admin/allowed-users")
                 val data = json.parseToJsonElement(response).jsonObject
                 withContext(Dispatchers.Main) {
-                    allowedUsers = data["allowedUsers"]?.jsonArray?.map {
-                        it.jsonPrimitive.content
-                    } ?: emptyList()
+                    allowedUsers = data["allowedUsers"]?.jsonArray.safeStringList()
                 }
                 Log.d(TAG, "Allowed users loaded: ${allowedUsers.size}")
             } catch (e: Exception) {
@@ -4063,9 +4061,7 @@ fun ConfigEditorScreen(
                 }
                 "inactivity" -> {
                     inactivityThresholdDays = data["thresholdDays"]?.jsonPrimitive?.contentOrNull ?: ""
-                    inactivityExemptRoles = data["exemptRoles"]?.jsonArray?.map {
-                        it.jsonPrimitive.content
-                    } ?: emptyList()
+                    inactivityExemptRoles = data["exemptRoles"]?.jsonArray.safeStringList()
                 }
             }
         }
