@@ -51,6 +51,7 @@ async function handleMotCacheButton(interaction) {
         { name: '🔍 Emoji', value: motCache.emoji || '🔍', inline: true },
         { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
         { name: '🎮 Mode de jeu', value: modeText, inline: true },
+        { name: '📈 Taux d\'apparition', value: `${motCache.probability || 5}%`, inline: true },
         { name: '📏 Longueur min.', value: `${motCache.minMessageLength || 15} caractères`, inline: true },
         { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salon(s)` : 'Tous', inline: true },
         { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
@@ -79,16 +80,20 @@ async function handleMotCacheButton(interaction) {
         .setLabel('🔍 Emoji')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('motcache_minlength')
-        .setLabel('📏 Longueur min.')
+        .setCustomId('motcache_probability')
+        .setLabel('📈 Taux (%)')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('motcache_gamechannels')
-        .setLabel('📋 Salons jeu')
+        .setCustomId('motcache_minlength')
+        .setLabel('📏 Longueur min.')
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const row3 = new ActionRowBuilder().addComponents(
+    const row2bis = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_gamechannels')
+        .setLabel('📋 Salons jeu')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('motcache_letternotifchannel')
         .setLabel('💬 Salon lettres')
@@ -96,7 +101,10 @@ async function handleMotCacheButton(interaction) {
       new ButtonBuilder()
         .setCustomId('motcache_winnernotifchannel')
         .setLabel('📢 Salon gagnant')
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row3 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('motcache_reset')
         .setLabel('🔄 Reset jeu')
@@ -106,7 +114,7 @@ async function handleMotCacheButton(interaction) {
     return interaction.editReply({
       content: null,
       embeds: [embed],
-      components: [row1, row2, row3]
+      components: [row1, row2, row2bis, row3]
     });
   }
 
@@ -336,6 +344,7 @@ async function handleMotCacheButton(interaction) {
         { name: '🔍 Emoji', value: motCache.emoji || '🔍', inline: true },
         { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
         { name: '🎮 Mode de jeu', value: modeText, inline: true },
+        { name: '📈 Taux d\'apparition', value: `${motCache.probability || 5}%`, inline: true },
         { name: '📏 Longueur min.', value: `${motCache.minMessageLength || 15} caractères`, inline: true },
         { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salon(s)` : 'Tous', inline: true },
         { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
@@ -364,16 +373,20 @@ async function handleMotCacheButton(interaction) {
         .setLabel('🔍 Emoji')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('motcache_minlength')
-        .setLabel('📏 Longueur min.')
+        .setCustomId('motcache_probability')
+        .setLabel('📈 Taux (%)')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId('motcache_gamechannels')
-        .setLabel('📋 Salons jeu')
+        .setCustomId('motcache_minlength')
+        .setLabel('📏 Longueur min.')
         .setStyle(ButtonStyle.Secondary)
     );
 
-    const row3 = new ActionRowBuilder().addComponents(
+    const row2bis = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_gamechannels')
+        .setLabel('📋 Salons jeu')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('motcache_letternotifchannel')
         .setLabel('💬 Salon lettres')
@@ -381,7 +394,10 @@ async function handleMotCacheButton(interaction) {
       new ButtonBuilder()
         .setCustomId('motcache_winnernotifchannel')
         .setLabel('📢 Salon gagnant')
-        .setStyle(ButtonStyle.Secondary),
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row3 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('motcache_reset')
         .setLabel('🔄 Reset jeu')
@@ -395,7 +411,7 @@ async function handleMotCacheButton(interaction) {
       await interaction.editReply({
         content: null, // Enlever le contenu précédent s'il y en avait
         embeds: [embed],
-        components: [row1, row2, row3]
+        components: [row1, row2, row2bis, row3]
       });
       console.log(`[MOT-CACHE-HANDLER] ✅ EditReply réussi`);
       return;

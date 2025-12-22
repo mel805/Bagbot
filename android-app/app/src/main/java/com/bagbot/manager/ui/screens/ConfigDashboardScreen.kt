@@ -3478,6 +3478,9 @@ private fun MotCacheConfigTab(
     var emoji by remember { mutableStateOf(motCache?.str("emoji") ?: "🔍") }
     var rewardAmount by remember { mutableStateOf(motCache?.int("rewardAmount")?.toString() ?: "5000") }
     var minMessageLength by remember { mutableStateOf(motCache?.int("minMessageLength")?.toString() ?: "15") }
+    var mode by remember { mutableStateOf(motCache?.str("mode") ?: "probability") }
+    var probability by remember { mutableStateOf(motCache?.int("probability")?.toString() ?: "5") }
+    var lettersPerDay by remember { mutableStateOf(motCache?.int("lettersPerDay")?.toString() ?: "1") }
     
     val initialAllowedChannels = remember(motCache) {
         motCache?.arr("allowedChannels").safeStringList()
@@ -3588,6 +3591,67 @@ private fun MotCacheConfigTab(
                         placeholder = { Text("15") },
                         singleLine = true
                     )
+                }
+            }
+        }
+
+        // Mode de jeu
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("🎮 Mode de jeu", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = mode == "probability",
+                            onClick = { mode = "probability" },
+                            label = { Text("🎲 Probabilité") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = mode == "daily",
+                            onClick = { mode = "daily" },
+                            label = { Text("📅 Quotidien") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(12.dp))
+                    
+                    if (mode == "probability") {
+                        Text("📈 Taux d'apparition", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = probability,
+                            onValueChange = { if (it.all { c -> c.isDigit() }) probability = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Probabilité (%)") },
+                            placeholder = { Text("5") },
+                            singleLine = true
+                        )
+                        Text(
+                            "$probability% de chance par message",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    } else {
+                        Text("📅 Lettres par jour", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = lettersPerDay,
+                            onValueChange = { if (it.all { c -> c.isDigit() }) lettersPerDay = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Nombre de lettres") },
+                            placeholder = { Text("1") },
+                            singleLine = true
+                        )
+                        Text(
+                            "$lettersPerDay lettre(s) distribuée(s) par jour",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         }
@@ -3704,6 +3768,9 @@ private fun MotCacheConfigTab(
                                     put("emoji", emoji)
                                     put("rewardAmount", rewardAmount.toIntOrNull() ?: 5000)
                                     put("minMessageLength", minMessageLength.toIntOrNull() ?: 15)
+                                    put("mode", mode)
+                                    put("probability", probability.toIntOrNull() ?: 5)
+                                    put("lettersPerDay", lettersPerDay.toIntOrNull() ?: 1)
                                     put("allowedChannels", JsonArray(allowedChannels.map { JsonPrimitive(it) }))
                                     letterNotifChannel?.let { put("letterNotificationChannel", it) }
                                     winnerNotifChannel?.let { put("notificationChannel", it) }
