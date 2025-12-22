@@ -28,7 +28,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 (async () => {
   try {
-    console.log('🚀 Déploiement lent avec 2s entre chaque commande...\n');
+    console.log('🚀 Déploiement lent avec 3s entre chaque commande...\n');
     
     // Récupérer les commandes existantes
     const existing = await rest.get(Routes.applicationCommands(process.env.CLIENT_ID));
@@ -45,7 +45,7 @@ const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
           await rest.post(Routes.applicationCommands(process.env.CLIENT_ID), { body: cmd });
           console.log(`✅ ${++deployed}/${commands.length} - POST: ${cmd.name}`);
         }
-        await wait(2000); // 2 secondes entre chaque
+        await wait(3000); // 3 secondes entre chaque
       } catch (error) {
         if (error.status === 429) {
           const retryAfter = error.retry_after || 5000;
