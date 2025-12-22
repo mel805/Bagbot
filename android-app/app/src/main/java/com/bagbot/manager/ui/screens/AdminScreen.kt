@@ -541,7 +541,7 @@ fun SessionsTab(
                 val lastSeen = session["lastSeen"]?.jsonPrimitive?.contentOrNull ?: ""
                 val isOnline = session["isOnline"]?.jsonPrimitive?.booleanOrNull ?: false
                 
-                // Déterminer le rôle
+                // Déterminer le rôle (même logique que BotControlScreen)
                 val role = when {
                     userId in founderIds -> "👑 Fondateur"
                     userRolesList.any { it in staffRoleIds } -> "⚡ Admin"

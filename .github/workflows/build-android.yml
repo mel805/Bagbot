@@ -63,11 +63,17 @@ jobs:
         body: |
           ## 🎉 BAG Bot Manager ${{ github.ref_name }}
           
-          ### ✨ Nouvelles fonctionnalités v5.8.4
+          ### ✨ Nouvelles fonctionnalités v5.8.5
           
-          #### 🔐 Accès Admin Amélioré (NOUVEAU!)
+          #### 🔐 Affichage des Rôles Corrigé (NOUVEAU!)
+          - **Statut utilisateur corrigé**: Affiche maintenant "Fondateur", "Admin" ou "Membre autorisé" correctement
+          - **Membres connectés avec rôles**: L'écran d'accueil affiche tous les membres connectés avec leurs rôles
+          - **Icônes par rôle**: 👑 Fondateur (or), ⚡ Admin (rouge), 👤 Membre (vert)
+          - **Détection automatique**: Basée sur les rôles staff configurés (`staffRoleIds`)
+          - **Admin tab Sessions**: Affiche correctement les rôles de tous les membres connectés
+          
+          #### 🔐 Accès Admin Amélioré (v5.8.4)
           - **Onglet Admin accessible aux admins**: L'onglet Admin n'est plus réservé au fondateur
-          - **Détection automatique des admins**: Basée sur les rôles staff configurés (`staffRoleIds`)
           - **Chat Staff pour les admins**: Les utilisateurs avec un rôle staff ont accès au chat staff
           - **Sections Admin accessibles**: Gestion des accès et sessions pour tous les admins
           - **Logs réservés au fondateur**: Seul le fondateur garde l'accès aux logs système
@@ -119,16 +125,18 @@ jobs:
           http://88.174.155.230:33002
           
           ### 📊 Informations Techniques
-          - **Version**: 5.8.4 (versionCode 584)
+          - **Version**: 5.8.5 (versionCode 585)
           - **Min SDK**: 26 (Android 8.0)
           - **Target SDK**: 34 (Android 14)
           - **Taille**: ~15-25 MB
           
-          ### 🐛 Corrections de bugs
-          - ✅ Détection des rôles admin via `staffRoleIds`
-          - ✅ Accès au chat staff pour les admins
-          - ✅ Navigation Admin accessible aux utilisateurs avec rôle staff
-          - ✅ Logs système réservés au fondateur uniquement
+          ### 🐛 Corrections de bugs v5.8.5
+          - ✅ Affichage correct du statut utilisateur (Fondateur/Admin/Membre)
+          - ✅ Liste des membres connectés affichée avec leurs rôles
+          - ✅ Icônes et couleurs par rôle dans l'écran d'accueil
+          - ✅ Admin tab Sessions affiche les bons rôles
+          - ✅ Détection des rôles basée sur staffRoleIds configurés
+          - ✅ Calcul des rôles côté client pour plus de fiabilité
           
           ### 📋 Configuration Requise
           Pour que les admins soient détectés, configurez les rôles staff dans le bot :

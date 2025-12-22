@@ -1122,7 +1122,8 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                     members = members,
                                     channels = channels,
                                     roles = roles,
-                                    isFounder = isFounder
+                                    isFounder = isFounder,
+                                    isAdmin = isAdmin
                                 )
                             }
                         }
@@ -1288,30 +1289,58 @@ fun BotControlScreen(
     members: Map<String, String>,
     channels: Map<String, String>,
     roles: Map<String, String>,
-    isFounder: Boolean
+    isFounder: Boolean,
+    isAdmin: Boolean = false
 ) {
     // Charger les membres connectés
     var connectedUsers by remember { mutableStateOf<List<Triple<String, String, String>>>(emptyList()) } // userId, username, role
     var isLoadingConnected by remember { mutableStateOf(false) }
+    var staffRoleIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    val founderId = "943487722738311219"
     
     fun loadConnectedUsers() {
         scope.launch {
             isLoadingConnected = true
             withContext(Dispatchers.IO) {
                 try {
+                    // Charger d'abord la config pour les rôles staff
+                    try {
+                        val configResp = api.getJson("/api/configs")
+                        val config = json.parseToJsonElement(configResp).jsonObject
+                        val staffRoles = config["staffRoleIds"]?.jsonArray?.mapNotNull { 
+                            it.jsonPrimitive.contentOrNull 
+                        } ?: emptyList()
+                        staffRoleIds = staffRoles
+                    } catch (e: Exception) {
+                        Log.e("BotControl", "Erreur chargement staffRoleIds: ${e.message}")
+                    }
+                    
+                    // Charger les sessions
                     val resp = api.getJson("/api/admin/sessions")
                     val obj = json.parseToJsonElement(resp).jsonObject
                     val sessions = obj["sessions"]?.jsonArray?.mapNotNull {
                         val session = it.jsonObject
                         val userId = session["userId"]?.jsonPrimitive?.contentOrNull
                         val username = session["username"]?.jsonPrimitive?.contentOrNull ?: members[userId] ?: "Inconnu"
-                        val role = session["role"]?.jsonPrimitive?.contentOrNull ?: "Membre"
+                        
+                        // Calculer le rôle côté client
+                        val userRoles = session["roles"]?.jsonArray?.mapNotNull {
+                            it.jsonPrimitive.contentOrNull
+                        } ?: emptyList()
+                        
+                        val role = when {
+                            userId == founderId -> "👑 Fondateur"
+                            userRoles.any { it in staffRoleIds } -> "⚡ Admin"
+                            else -> "👤 Membre"
+                        }
+                        
                         if (userId != null) Triple(userId, username, role) else null
                     } ?: emptyList()
                     withContext(Dispatchers.Main) {
                         connectedUsers = sessions
                     }
                 } catch (e: Exception) {
+                    Log.e("BotControl", "Erreur chargement sessions: ${e.message}")
                     withContext(Dispatchers.Main) {
                         connectedUsers = emptyList()
                     }
@@ -1472,33 +1501,37 @@ fun BotControlScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        Icons.Default.AccountCircle,
-                                        null,
-                                        tint = when(role) {
-                                            "Fondateur" -> Color(0xFFFFD700)
-                                            "Admin" -> Color(0xFFFF1744)
-                                            else -> Color(0xFF4CAF50)
-                                        },
-                                        modifier = Modifier.size(24.dp)
+                                Icon(
+                                    when {
+                                        role.contains("Fondateur") -> Icons.Default.Star
+                                        role.contains("Admin") -> Icons.Default.AdminPanelSettings
+                                        else -> Icons.Default.AccountCircle
+                                    },
+                                    null,
+                                    tint = when {
+                                        role.contains("Fondateur") -> Color(0xFFFFD700)
+                                        role.contains("Admin") -> Color(0xFFFF1744)
+                                        else -> Color(0xFF4CAF50)
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        username,
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Medium
                                     )
-                                    Spacer(Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            username,
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            role,
-                                            color = when(role) {
-                                                "Fondateur" -> Color(0xFFFFD700)
-                                                "Admin" -> Color(0xFFFF1744)
-                                                else -> Color.Gray
-                                            },
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
+                                    Text(
+                                        role,
+                                        color = when {
+                                            role.contains("Fondateur") -> Color(0xFFFFD700)
+                                            role.contains("Admin") -> Color(0xFFFF1744)
+                                            else -> Color.Gray
+                                        },
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                                 }
                             }
                             if (connectedUsers.last() != Triple(userId, username, role)) {
@@ -2392,6 +2425,7 @@ fun HomeScreen(
     userName: String,
     userId: String,
     isFounder: Boolean,
+    isAdmin: Boolean = false,
     memberRoles: Map<String, List<String>>,
     errorMessage: String?
 ) {
@@ -2525,6 +2559,9 @@ fun HomeScreen(
                         if (isFounder) {
                             Text("👑 Fondateur du serveur", color = Color(0xFFFFD700))
                             Text("Accès complet", color = Color.Gray)
+                        } else if (isAdmin) {
+                            Text("⚡ Administrateur", color = Color(0xFFFF1744))
+                            Text("Accès au chat staff et admin", color = Color.Gray)
                         } else {
                             Text("✅ Membre autorisé", color = Color(0xFF4CAF50))
                         }
