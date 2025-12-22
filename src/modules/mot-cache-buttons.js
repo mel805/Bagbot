@@ -30,14 +30,69 @@ async function handleMotCacheButton(interaction) {
 
   // Toggle enabled/disabled
   if (buttonId === 'motcache_toggle') {
+    // Déférer immédiatement
+    await interaction.deferUpdate();
+    
     motCache.enabled = !motCache.enabled;
     guildConfig.motCache = motCache;
     await writeConfig(config);
 
-    return interaction.update({
-      content: `✅ Jeu mot-caché ${motCache.enabled ? '**activé**' : '**désactivé**'}`,
-      embeds: [],
-      components: []
+    // Reconstruire le panneau de config avec le nouvel état
+    const embed = new EmbedBuilder()
+      .setTitle('⚙️ Configuration Mot-Caché')
+      .setDescription('────────────────────────────')
+      .addFields(
+        { name: '📊 État', value: motCache.enabled ? '✅ Activé' : '⏸️ Désactivé', inline: true },
+        { name: '🎯 Mot cible', value: motCache.targetWord || 'Non défini', inline: true },
+        { name: '🔍 Emoji', value: motCache.emoji || '🔍', inline: true },
+        { name: '💰 Récompense', value: `${motCache.rewardAmount || 5000} BAG$`, inline: true },
+        { name: '📋 Salons jeu', value: motCache.allowedChannels && motCache.allowedChannels.length > 0 ? `${motCache.allowedChannels.length} salons` : 'Tous', inline: true },
+        { name: '💬 Salon lettres', value: motCache.letterNotificationChannel ? `<#${motCache.letterNotificationChannel}>` : 'Non configuré', inline: true },
+        { name: '📢 Salon gagnant', value: motCache.winnerNotificationChannel ? `<#${motCache.winnerNotificationChannel}>` : 'Non configuré', inline: true }
+      )
+      .setColor(motCache.enabled ? '#2ecc71' : '#95a5a6');
+
+    const row1 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_toggle')
+        .setLabel(motCache.enabled ? '⏸️ Désactiver' : '▶️ Activer')
+        .setStyle(motCache.enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('motcache_setword')
+        .setLabel('🎯 Changer le mot')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('motcache_emoji')
+        .setLabel('🔍 Emoji')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_gamechannels')
+        .setLabel('📋 Salons jeu')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('motcache_letternotifchannel')
+        .setLabel('💬 Salon lettres')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('motcache_winnernotifchannel')
+        .setLabel('📢 Salon gagnant')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row3 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('motcache_reset')
+        .setLabel('🔄 Reset jeu')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return interaction.editReply({
+      content: null,
+      embeds: [embed],
+      components: [row1, row2, row3]
     });
   }
 
