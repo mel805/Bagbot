@@ -98,7 +98,7 @@ val configGroups = listOf(
         "🎨 Personnalisation",
         Icons.Default.Palette,
         Color(0xFFFF9800),
-        listOf("categoryBanners", "footerLogoUrl", "geo")
+        listOf("footerLogoUrl", "geo")
     )
 )
 
