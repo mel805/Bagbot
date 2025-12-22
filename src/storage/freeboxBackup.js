@@ -11,6 +11,7 @@ class FreeboxBackup {
   constructor() {
     // Chemins possibles pour les sauvegardes sur Freebox
     this.backupPaths = [
+        "/home/bagbot/Bag-bot/data/backups",
         "/mnt/mycustompath",
         "/media/freebox/Disque dur/BAG-Backups",
         "/media/disque dur/BAG-Backups",
