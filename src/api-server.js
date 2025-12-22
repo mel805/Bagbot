@@ -680,20 +680,21 @@ app.post('/api/music/upload', requireAuth, upload.single('file'), (req, res) => 
 
 app.get('/api/music/stream/:filename', (req, res) => {
   try {
-    const { filename } = req.params;
+    // Décoder le nom de fichier (+ devient espace, %20 aussi)
+    let filename = decodeURIComponent(req.params.filename.replace(/\+/g, ' '));
     const filepath = path.join(__dirname, '../data/uploads', filename);
     
-    console.log('[BOT-API] Streaming request for:', filename);
+    console.log('📥 [BOT-API] Streaming request for:', filename);
     console.log('[BOT-API] Full path:', filepath);
     console.log('[BOT-API] File exists:', fs.existsSync(filepath));
     
     if (!fs.existsSync(filepath)) {
-      console.error('[BOT-API] File not found:', filepath);
+      console.error('❌ [BOT-API] File not found:', filepath);
       return res.status(404).json({ error: 'File not found' });
     }
     
     const stat = fs.statSync(filepath);
-    console.log('[BOT-API] File size:', stat.size, 'bytes');
+    console.log('✅ [BOT-API] File size:', stat.size, 'bytes');
     
     res.sendFile(filepath);
   } catch (error) {
