@@ -304,6 +304,60 @@ app.post('/auth/login', async (req, res) => {
   });
 });
 
+// GET /api/bot/status - Statut du bot Discord (PUBLIC)
+app.get('/api/bot/status', async (req, res) => {
+  try {
+    const client = req.app.locals.client;
+    
+    if (!client || !client.isReady()) {
+      return res.json({
+        status: 'offline',
+        message: 'Bot Discord non connecté',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    const guild = client.guilds.cache.get(GUILD);
+    if (!guild) {
+      return res.json({
+        status: 'offline',
+        message: 'Serveur Discord non trouvé',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Statistiques basiques
+    const botUser = client.user;
+    const uptime = Math.floor(client.uptime / 1000); // en secondes
+    const memberCount = guild.memberCount;
+    const channelCount = guild.channels.cache.size;
+    
+    res.json({
+      status: 'online',
+      bot: {
+        username: botUser.username,
+        id: botUser.id,
+        avatar: botUser.displayAvatarURL(),
+        uptime: uptime
+      },
+      guild: {
+        name: guild.name,
+        id: guild.id,
+        memberCount: memberCount,
+        channelCount: channelCount
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('[BOT-API] Error in /api/bot/status:', error);
+    res.status(500).json({
+      status: 'error',
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // GET /api/configs - Récupérer toute la config (PUBLIC pour compatibilité)
 app.get('/api/configs', async (req, res) => {
   try {

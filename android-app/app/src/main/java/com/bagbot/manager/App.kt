@@ -1240,8 +1240,8 @@ fun LoginScreen(
     onBaseUrlChange: (String) -> Unit,
     onLogin: () -> Unit
 ) {
-    // Hardcoder l'URL du dashboard
-    val defaultUrl = "http://88.174.155.230:33002"
+    // Hardcoder l'URL de l'API bot (33003)
+    val defaultUrl = "http://88.174.155.230:33003"
     LaunchedEffect(Unit) {
         if (baseUrl.isEmpty()) {
             onBaseUrlChange(defaultUrl)

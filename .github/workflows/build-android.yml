@@ -63,6 +63,14 @@ jobs:
         body: |
           ## 🎉 BAG Bot Manager ${{ github.ref_name }}
           
+          ### ✨ Nouvelles fonctionnalités v5.8.7
+          
+          #### 🔧 Corrections Importantes (NOUVEAU!)
+          - **Endpoint Bot Status**: Ajout de `/api/bot/status` manquant → affiche "Bot en ligne" ✅
+          - **URL API Corrigée**: L'app utilise maintenant le port 33003 (bot-api) au lieu de 33002 (dashboard)
+          - **Erreur 404 Résolue**: Configuration fonctionne correctement, plus d'erreur HTTP 404
+          - **Backend amélioré**: Retourne les rôles Discord dans les sessions
+          
           ### ✨ Nouvelles fonctionnalités v5.8.6
           
           #### 🔐 Accès Admins Corrigé (NOUVEAU!)
@@ -131,10 +139,16 @@ jobs:
           http://88.174.155.230:33002
           
           ### 📊 Informations Techniques
-          - **Version**: 5.8.6 (versionCode 586)
+          - **Version**: 5.8.7 (versionCode 587)
           - **Min SDK**: 26 (Android 8.0)
           - **Target SDK**: 34 (Android 14)
           - **Taille**: ~15-25 MB
+          
+          ### 🐛 Corrections de bugs v5.8.7
+          - ✅ Ajout de l'endpoint `/api/bot/status` manquant → "Bot en ligne" s'affiche
+          - ✅ URL API corrigée : port 33003 au lieu de 33002
+          - ✅ Erreur HTTP 404 dans la config corrigée
+          - ✅ Backend retourne les rôles Discord dans `/api/admin/sessions`
           
           ### 🐛 Corrections de bugs v5.8.6
           - ✅ Les admins ne voient QUE le Chat Staff (pas Admin ni Logs)
