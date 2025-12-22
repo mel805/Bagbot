@@ -3379,6 +3379,16 @@ fun AdminScreenWithAccess(
     var selectedMember by remember { mutableStateOf<String?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     
+    // DEBUG: Log members
+    LaunchedEffect(members) {
+        Log.d(TAG, "AdminScreenWithAccess: Received ${members.size} members")
+        if (members.isEmpty()) {
+            Log.e(TAG, "AdminScreenWithAccess: members is EMPTY!")
+        } else {
+            Log.d(TAG, "AdminScreenWithAccess: First 3 members: ${members.entries.take(3)}")
+        }
+    }
+    
     // Charger la liste des utilisateurs autorisés
     LaunchedEffect(Unit) {
         isLoading = true
@@ -3393,7 +3403,7 @@ fun AdminScreenWithAccess(
                 }
                 Log.d(TAG, "Allowed users loaded: ${allowedUsers.size}")
             } catch (e: Exception) {
-                Log.e(TAG, "Error loading allowed users: ${e.message}")
+                Log.e(TAG, "Error loading allowed-users: ${e.message}")
                 withContext(Dispatchers.Main) {
                     snackbar.showSnackbar("❌ Erreur: ${e.message}")
                 }
@@ -3449,18 +3459,31 @@ fun AdminScreenWithAccess(
     }
     
     if (showAddDialog) {
+        val availableMembers = members.filterKeys { !allowedUsers.contains(it) }
+        Log.d(TAG, "Dialog: Available members for selection: ${availableMembers.size}")
+        
         AlertDialog(
             onDismissRequest = { showAddDialog = false },
             title = { Text("Ajouter un utilisateur") },
             text = {
                 Column {
-                    Text("Sélectionnez un membre à autoriser")
+                    if (availableMembers.isEmpty()) {
+                        Text(
+                            "⚠️ Aucun membre disponible.\nTous les membres sont déjà autorisés ou la liste des membres n'a pas pu être chargée.",
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    } else {
+                        Text("Sélectionnez un membre à autoriser (${availableMembers.size} disponibles)")
+                    }
                     Spacer(Modifier.height(16.dp))
                     MemberSelector(
-                        members = members.filterKeys { !allowedUsers.contains(it) },
+                        members = availableMembers,
                         selectedMemberId = selectedMember,
-                        onMemberSelected = { selectedMember = it },
-                        label = "Membre"
+                        onMemberSelected = { 
+                            selectedMember = it
+                            Log.d(TAG, "Member selected: $it (${availableMembers[it]})")
+                        },
+                        label = if (availableMembers.isEmpty()) "Aucun membre" else "Membre"
                     )
                 }
             },

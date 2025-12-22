@@ -1061,6 +1061,172 @@ app.delete('/api/music/playlists/:id', requireAuth, (req, res) => {
   }
 });
 
+// ========== ENDPOINTS MANQUANTS POUR COMPATIBILITÉ APP ANDROID ==========
+
+// POST /api/economy - Sauvegarder config économie (utilise PUT /api/configs/economy)
+app.post('/api/economy', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    config.guilds[GUILD].economy = { ...config.guilds[GUILD].economy, ...req.body };
+    await writeConfig(config);
+    res.json({ success: true, config: config.guilds[GUILD].economy });
+  } catch (error) {
+    console.error('[BOT-API] Error in /api/economy:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/welcome - Sauvegarder config welcome
+app.post('/api/welcome', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    config.guilds[GUILD].welcome = { ...config.guilds[GUILD].welcome, ...req.body.welcome };
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/goodbye - Sauvegarder config goodbye
+app.post('/api/goodbye', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    config.guilds[GUILD].goodbye = { ...config.guilds[GUILD].goodbye, ...req.body.goodbye };
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/inactivity - Sauvegarder config inactivity
+app.post('/api/inactivity', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    config.guilds[GUILD].inactivity = { ...config.guilds[GUILD].inactivity, ...req.body };
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/inactivity/reset/:userId - Reset inactivité d'un membre
+app.post('/api/inactivity/reset/:userId', requireAuth, (req, res) => {
+  res.json({ success: true, message: 'Reset inactivity not implemented' });
+});
+
+// POST /api/inactivity/add-all-members - Ajouter tous les membres au tracking
+app.post('/api/inactivity/add-all-members', requireAuth, (req, res) => {
+  res.json({ success: true, message: 'Add all members not implemented' });
+});
+
+// POST /api/truthdare/:mode/channels - Ajouter channel truth/dare
+app.post('/api/truthdare/:mode/channels', requireAuth, express.json(), async (req, res) => {
+  try {
+    const { mode } = req.params;
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    if (!config.guilds[GUILD].truthdare) config.guilds[GUILD].truthdare = {};
+    if (!config.guilds[GUILD].truthdare[mode]) config.guilds[GUILD].truthdare[mode] = { channels: [] };
+    
+    const channels = config.guilds[GUILD].truthdare[mode].channels || [];
+    if (req.body.channelId && !channels.includes(req.body.channelId)) {
+      channels.push(req.body.channelId);
+    }
+    config.guilds[GUILD].truthdare[mode].channels = channels;
+    
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/truthdare/:mode/:id - Modifier un prompt
+app.put('/api/truthdare/:mode/:id', requireAuth, express.json(), (req, res) => {
+  res.json({ success: true, message: 'Update truthdare prompt not implemented' });
+});
+
+// POST /api/truthdare/:mode - Ajouter un prompt
+app.post('/api/truthdare/:mode', requireAuth, express.json(), (req, res) => {
+  res.json({ success: true, message: 'Add truthdare prompt not implemented' });
+});
+
+// POST /api/actions/gifs - Sauvegarder GIFs d'actions
+app.post('/api/actions/gifs', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    if (!config.guilds[GUILD].economy) config.guilds[GUILD].economy = {};
+    if (!config.guilds[GUILD].economy.actions) config.guilds[GUILD].economy.actions = {};
+    
+    // Merger les GIFs
+    for (const [action, gifs] of Object.entries(req.body)) {
+      if (!config.guilds[GUILD].economy.actions[action]) {
+        config.guilds[GUILD].economy.actions[action] = {};
+      }
+      config.guilds[GUILD].economy.actions[action].gifs = gifs;
+    }
+    
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/actions/messages - Sauvegarder messages d'actions
+app.post('/api/actions/messages', requireAuth, express.json(), async (req, res) => {
+  try {
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    if (!config.guilds[GUILD].economy) config.guilds[GUILD].economy = {};
+    if (!config.guilds[GUILD].economy.actions) config.guilds[GUILD].economy.actions = {};
+    
+    // Merger les messages
+    for (const [action, messages] of Object.entries(req.body)) {
+      if (!config.guilds[GUILD].economy.actions[action]) {
+        config.guilds[GUILD].economy.actions[action] = {};
+      }
+      config.guilds[GUILD].economy.actions[action].messages = messages;
+    }
+    
+    await writeConfig(config);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /backup - Créer un backup
+app.post('/backup', requireAuth, (req, res) => {
+  res.json({ success: true, message: 'Backup not implemented' });
+});
+
+// POST /restore - Restaurer un backup
+app.post('/restore', requireAuth, express.json(), (req, res) => {
+  res.json({ success: true, message: 'Restore not implemented' });
+});
+
+// POST /bot/control - Contrôler le bot (restart/deploy)
+app.post('/bot/control', requireAuth, express.json(), (req, res) => {
+  const { action } = req.body;
+  res.json({ success: true, message: `Bot control action '${action}' not implemented` });
+});
+
 // ========== FONCTION D'INITIALISATION ==========
 
 function startApiServer(client) {
