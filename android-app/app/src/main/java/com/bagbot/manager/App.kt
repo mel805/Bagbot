@@ -702,7 +702,34 @@ fun StaffChatScreen(
                                 Text(msg.timestamp.take(16).replace("T", " "), style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                             }
                             Spacer(Modifier.height(8.dp))
-                            Text(msg.message, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                            
+                            // Afficher le contenu selon le type
+                            when (msg.type) {
+                                "attachment" -> {
+                                    when (msg.attachmentType) {
+                                        "image" -> {
+                                            Text("🖼️ Image: ${msg.message}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                            Text("(Prévisualisation non disponible dans cette version)", style = MaterialTheme.typography.bodySmall, color = Color.Gray.copy(alpha = 0.6f))
+                                        }
+                                        "video" -> {
+                                            Text("🎥 Vidéo: ${msg.message}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                        else -> {
+                                            Text("📎 Fichier: ${msg.message}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                                "command" -> {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.PlayArrow, null, tint = Color(0xFF57F287), modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(msg.message, style = MaterialTheme.typography.bodyMedium, color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                else -> {
+                                    Text(msg.message, style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                                }
+                            }
                         }
                     }
                 }
@@ -710,21 +737,63 @@ fun StaffChatScreen(
         }
         
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))) {
-            Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = newMessage,
-                    onValueChange = { newMessage = it },
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("Écrivez un message...") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray),
-                    maxLines = 3
-                )
-                Spacer(Modifier.width(8.dp))
-                IconButton(onClick = { sendMessage() }, enabled = newMessage.isNotBlank() && !isSending) {
-                    if (isSending) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                    } else {
-                        Icon(Icons.Default.Send, "Envoyer", tint = if (newMessage.isNotBlank()) Color(0xFF5865F2) else Color.Gray)
+            Column(Modifier.padding(12.dp)) {
+                // Boutons d'actions rapides
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { sendMessage(commandType = "command", commandData = "/actionverite") },
+                        enabled = !isSending,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5865F2))
+                    ) {
+                        Icon(Icons.Default.Casino, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("A/V", fontSize = 12.sp)
+                    }
+                    
+                    Button(
+                        onClick = { sendMessage(commandType = "command", commandData = "/motcache") },
+                        enabled = !isSending,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEE75C))
+                    ) {
+                        Text("🔍", fontSize = 12.sp)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Mot Caché", fontSize = 12.sp, color = Color.Black)
+                    }
+                    
+                    Button(
+                        onClick = { 
+                            scope.launch {
+                                snackbar.showSnackbar("📎 Upload de fichiers pas encore implémenté dans cette version")
+                            }
+                        },
+                        enabled = !isSending,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF57F287))
+                    ) {
+                        Icon(Icons.Default.AttachFile, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Fichier", fontSize = 12.sp, color = Color.Black)
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                
+                // Champ de texte
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                    OutlinedTextField(
+                        value = newMessage,
+                        onValueChange = { newMessage = it },
+                        modifier = Modifier.weight(1f),
+                        placeholder = { Text("Écrivez un message...") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.LightGray),
+                        maxLines = 4
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = { sendMessage() }, enabled = newMessage.isNotBlank() && !isSending) {
+                        if (isSending) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                        } else {
+                            Icon(Icons.Default.Send, "Envoyer", tint = if (newMessage.isNotBlank()) Color(0xFF5865F2) else Color.Gray)
+                        }
                     }
                 }
             }

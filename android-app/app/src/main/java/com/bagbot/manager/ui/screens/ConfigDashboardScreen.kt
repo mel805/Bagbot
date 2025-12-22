@@ -4082,26 +4082,54 @@ private fun TruthDareConfigTab(
                 OutlinedTextField(
                     value = newPromptText,
                     onValueChange = { newPromptText = it },
-                    label = { Text("Texte") },
+                    label = { Text("Texte (une ligne = un prompt)") },
                     modifier = Modifier.fillMaxWidth(),
-                    minLines = 2
+                    minLines = 3,
+                    maxLines = 10
+                )
+                Text(
+                    "💡 Astuce : Entrez plusieurs prompts en les séparant par des sauts de ligne",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 4.dp)
                 )
                 Spacer(Modifier.height(10.dp))
                 Button(
                     onClick = {
                         val text = newPromptText.trim()
                         if (text.isBlank()) return@Button
+                        
+                        // Détecter si plusieurs lignes
+                        val lines = text.lines().filter { it.trim().isNotBlank() }
+                        
                         scope.launch {
                             withContext(Dispatchers.IO) {
                                 try {
-                                    val body = buildJsonObject {
-                                        put("type", newPromptType)
-                                        put("text", text)
+                                    var successCount = 0
+                                    var errorCount = 0
+                                    
+                                    for (line in lines) {
+                                        try {
+                                            val body = buildJsonObject {
+                                                put("type", newPromptType)
+                                                put("text", line.trim())
+                                            }
+                                            api.postJson("/api/truthdare/$mode", json.encodeToString(JsonObject.serializer(), body))
+                                            successCount++
+                                            // Petit délai entre chaque ajout
+                                            kotlinx.coroutines.delay(100)
+                                        } catch (e: Exception) {
+                                            errorCount++
+                                        }
                                     }
-                                    api.postJson("/api/truthdare/$mode", json.encodeToString(JsonObject.serializer(), body))
+                                    
                                     withContext(Dispatchers.Main) {
                                         newPromptText = ""
-                                        snackbar.showSnackbar("✅ Prompt ajouté")
+                                        if (lines.size == 1) {
+                                            snackbar.showSnackbar("✅ Prompt ajouté")
+                                        } else {
+                                            snackbar.showSnackbar("✅ $successCount/${lines.size} prompts ajoutés${if (errorCount > 0) " ($errorCount erreurs)" else ""}")
+                                        }
                                     }
                                     load()
                                 } catch (e: Exception) {
@@ -4112,7 +4140,10 @@ private fun TruthDareConfigTab(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = newPromptText.trim().isNotBlank()
-                ) { Text("➕ Ajouter prompt") }
+                ) { 
+                    val lineCount = newPromptText.trim().lines().filter { it.trim().isNotBlank() }.size
+                    Text(if (lineCount > 1) "➕ Ajouter $lineCount prompts" else "➕ Ajouter prompt")
+                }
             }
         }
     }
