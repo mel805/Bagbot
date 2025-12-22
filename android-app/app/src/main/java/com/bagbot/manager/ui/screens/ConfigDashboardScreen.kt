@@ -269,6 +269,12 @@ private fun JsonObject.bool(key: String): Boolean? = this[key]?.jsonPrimitive?.b
 private fun JsonObject.int(key: String): Int? = this[key]?.jsonPrimitive?.intOrNull
 private fun JsonObject.double(key: String): Double? = this[key]?.jsonPrimitive?.doubleOrNull
 
+// Helper pour extraire une chaîne qui peut être soit un primitif, soit un objet avec un champ "id"
+private fun JsonObject.strOrId(key: String): String? {
+    val element = this[key] ?: return null
+    return element.jsonPrimitive?.contentOrNull ?: element.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+}
+
 @Composable
 private fun SectionCard(
     title: String,
@@ -3474,8 +3480,8 @@ private fun MotCacheConfigTab(
     var allowedChannels by remember(initialAllowedChannels) { mutableStateOf(initialAllowedChannels) }
     var newChannelId by remember { mutableStateOf<String?>(null) }
     
-    var letterNotifChannel by remember { mutableStateOf(motCache?.str("letterNotificationChannel")) }
-    var winnerNotifChannel by remember { mutableStateOf(motCache?.str("notificationChannel")) }
+    var letterNotifChannel by remember { mutableStateOf(motCache?.strOrId("letterNotificationChannel")) }
+    var winnerNotifChannel by remember { mutableStateOf(motCache?.strOrId("notificationChannel")) }
     
     var isSaving by remember { mutableStateOf(false) }
 

@@ -3633,7 +3633,7 @@ fun DashboardUrlCard(
                     value = editedUrl,
                     onValueChange = { editedUrl = it },
                     label = { Text("URL du Dashboard") },
-                    placeholder = { Text("http://88.174.155.230:33002") },
+                    placeholder = { Text("http://88.174.155.230:33003") },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
