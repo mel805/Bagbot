@@ -637,7 +637,98 @@ app.get('/api/discord/roles', async (req, res) => {
 
 // ========== STAFF CHAT ==========
 
-const staffMessages = [];
+let staffMessages = [];
+
+// Persist staff chat so conversations survive restarts.
+// Stored on disk to avoid impacting config.json stability.
+const STAFF_CHAT_STORE_PATH = path.join(__dirname, '../data/staff-chat-messages.json');
+
+function normalizeRoom(room) {
+  const r = String(room || 'global').trim();
+  return r.length ? r : 'global';
+}
+
+function isGlobalRoom(room) {
+  const r = normalizeRoom(room);
+  return r === 'global' || r === 'room-global' || r === 'all';
+}
+
+function normalizeMessage(m) {
+  if (!m || typeof m !== 'object') return null;
+  const id = String(m.id || '').trim();
+  const userId = String(m.userId || '').trim();
+  const username = String(m.username || '').trim() || 'Inconnu';
+  const message = String(m.message || '');
+  const room = normalizeRoom(m.room);
+  const timestamp = String(m.timestamp || new Date().toISOString());
+  const type = String(m.type || 'text');
+  const commandData = (m.commandData === undefined ? null : m.commandData);
+  const attachmentUrl = m.attachmentUrl ? String(m.attachmentUrl) : undefined;
+  const attachmentType = m.attachmentType ? String(m.attachmentType) : undefined;
+  if (!id || !userId) return null;
+  return {
+    id,
+    userId,
+    username,
+    message,
+    room,
+    timestamp,
+    type,
+    commandData,
+    ...(attachmentUrl ? { attachmentUrl } : {}),
+    ...(attachmentType ? { attachmentType } : {}),
+  };
+}
+
+function enforceStaffChatCaps(targetRoom) {
+  // Keep up to 200 messages per room.
+  const room = normalizeRoom(targetRoom);
+  let count = 0;
+  for (const msg of staffMessages) if (normalizeRoom(msg.room) === room) count++;
+  if (count <= 200) return;
+  let toRemove = count - 200;
+  // Remove oldest in that room (array order is append-only).
+  staffMessages = staffMessages.filter((m) => {
+    if (toRemove <= 0) return true;
+    if (normalizeRoom(m.room) === room) {
+      toRemove--;
+      return false;
+    }
+    return true;
+  });
+  // Also keep a reasonable global cap to avoid uncontrolled growth.
+  if (staffMessages.length > 2000) staffMessages = staffMessages.slice(-2000);
+}
+
+function persistStaffChatToDisk() {
+  try {
+    const dir = path.dirname(STAFF_CHAT_STORE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const tmp = STAFF_CHAT_STORE_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify({ messages: staffMessages }, null, 2), 'utf8');
+    try { fs.renameSync(tmp, STAFF_CHAT_STORE_PATH); } catch (_) { fs.writeFileSync(STAFF_CHAT_STORE_PATH, JSON.stringify({ messages: staffMessages }, null, 2), 'utf8'); }
+  } catch (e) {
+    try { console.warn('[BOT-API] staff chat persist failed:', e?.message || e); } catch (_) {}
+  }
+}
+
+function loadStaffChatFromDisk() {
+  try {
+    if (!fs.existsSync(STAFF_CHAT_STORE_PATH)) return;
+    const raw = fs.readFileSync(STAFF_CHAT_STORE_PATH, 'utf8');
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed?.messages) ? parsed.messages : [];
+    const normalized = list.map(normalizeMessage).filter(Boolean);
+    // Keep deterministic order; newest at end.
+    staffMessages = normalized.slice(-2000);
+    console.log(`[BOT-API] staff chat loaded: ${staffMessages.length} messages from disk`);
+  } catch (e) {
+    try { console.warn('[BOT-API] staff chat load failed:', e?.message || e); } catch (_) {}
+  }
+}
+
+// Load on startup
+loadStaffChatFromDisk();
 
 // ========== CHAT STAFF AMÉLIORÉ ==========
 
@@ -678,16 +769,32 @@ app.get('/api/staff/chat/messages', requireAuth, (req, res) => {
     console.log(`📥 [BOT-API] GET /api/staff/chat/messages?room=${room || 'global'}`);
     
     let filtered = staffMessages;
-    if (room && room !== 'global') {
-      filtered = staffMessages.filter(m => m.room === room);
-    } else {
-      // Par défaut, afficher les messages globaux
-      filtered = staffMessages.filter(m => !m.room || m.room === 'global');
-    }
+    const r = normalizeRoom(room);
+    if (!isGlobalRoom(r)) filtered = staffMessages.filter(m => normalizeRoom(m.room) === r);
+    else filtered = staffMessages.filter(m => isGlobalRoom(m.room));
     
     res.json({ messages: filtered });
   } catch (error) {
     console.error('[BOT-API] Error fetching staff messages:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST clear conversation (global or private room)
+app.post('/api/staff/chat/clear', requireAuth, express.json(), (req, res) => {
+  try {
+    const room = normalizeRoom(req.body?.room || req.query?.room || 'global');
+    const before = staffMessages.length;
+    if (isGlobalRoom(room)) {
+      staffMessages = staffMessages.filter(m => !isGlobalRoom(m.room));
+    } else {
+      staffMessages = staffMessages.filter(m => normalizeRoom(m.room) !== room);
+    }
+    persistStaffChatToDisk();
+    const removed = before - staffMessages.length;
+    res.json({ success: true, room, removed });
+  } catch (error) {
+    console.error('[BOT-API] Error clearing staff messages:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -702,7 +809,7 @@ app.post('/api/staff/chat/send', requireAuth, express.json(), (req, res) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
-    const newMessage = {
+    const newMessage = normalizeMessage({
       id: Date.now().toString(),
       userId,
       username,
@@ -711,15 +818,12 @@ app.post('/api/staff/chat/send', requireAuth, express.json(), (req, res) => {
       timestamp: new Date().toISOString(),
       type: commandType || 'text', // 'text', 'command', 'attachment'
       commandData: commandData || null
-    };
-    
+    });
+    if (!newMessage) return res.status(400).json({ error: 'Invalid message payload' });
+
     staffMessages.push(newMessage);
-    
-    // Garder seulement les 200 derniers messages
-    if (staffMessages.length > 200) {
-      staffMessages.shift();
-    }
-    
+    enforceStaffChatCaps(newMessage.room);
+    persistStaffChatToDisk();
     res.json({ success: true, message: newMessage });
   } catch (error) {
     console.error('[BOT-API] Error sending staff message:', error);
@@ -737,7 +841,7 @@ app.post('/api/staff/chat/upload', requireAuth, staffChatUpload.single('file'), 
     const { userId, username, room } = req.body;
     console.log(`📥 [BOT-API] POST /api/staff/chat/upload from ${username} - ${req.file.originalname}`);
     
-    const newMessage = {
+    const newMessage = normalizeMessage({
       id: Date.now().toString(),
       userId,
       username,
@@ -746,16 +850,14 @@ app.post('/api/staff/chat/upload', requireAuth, staffChatUpload.single('file'), 
       timestamp: new Date().toISOString(),
       type: 'attachment',
       attachmentUrl: `/api/staff/chat/file/${req.file.filename}`,
-      attachmentType: req.file.mimetype.startsWith('image') ? 'image' : 
+      attachmentType: req.file.mimetype.startsWith('image') ? 'image' :
                       req.file.mimetype.startsWith('video') ? 'video' : 'file'
-    };
-    
+    });
+    if (!newMessage) return res.status(400).json({ error: 'Invalid message payload' });
+
     staffMessages.push(newMessage);
-    
-    if (staffMessages.length > 200) {
-      staffMessages.shift();
-    }
-    
+    enforceStaffChatCaps(newMessage.room);
+    persistStaffChatToDisk();
     res.json({ success: true, message: newMessage });
   } catch (error) {
     console.error('[BOT-API] Error uploading staff file:', error);

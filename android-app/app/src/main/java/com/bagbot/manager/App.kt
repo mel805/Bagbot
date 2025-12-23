@@ -744,6 +744,26 @@ fun StaffChatScreen(
                 IconButton(onClick = { showRoomSelector = !showRoomSelector }) {
                     Icon(Icons.Default.People, "Changer de room", tint = Color.White)
                 }
+                IconButton(
+                    onClick = {
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val body = buildJsonObject { put("room", selectedRoom) }
+                                    api.postJson("/api/staff/chat/clear", body.toString())
+                                    withContext(Dispatchers.Main) {
+                                        snackbar.showSnackbar("🗑️ Conversation supprimée")
+                                        loadMessages()
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.Delete, "Supprimer conversation", tint = Color.White)
+                }
                 IconButton(onClick = { loadMessages() }) {
                     Icon(Icons.Default.Refresh, "Actualiser", tint = Color.White)
                 }
