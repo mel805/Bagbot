@@ -1296,13 +1296,23 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 Log.d(TAG, "Fetching /api/configs")
                 try {
                     val configJson = api.getJson("/api/configs")
-                    Log.d(TAG, "Response /api/configs: ${configJson.take(200)}")
+                    Log.d(TAG, "Response /api/configs: ${configJson.take(500)}")
                     withContext(Dispatchers.Main) {
                         configData = json.parseToJsonElement(configJson).jsonObject
                     }
                     Log.d(TAG, "Config loaded: ${configData?.keys?.size} sections")
+                    Log.d(TAG, "Config keys: ${configData?.keys}")
+                    
+                    // Log spécifique pour autokick
+                    val autokick = configData?.get("autokick")
+                    if (autokick != null) {
+                        Log.d(TAG, "✅ autokick found: ${autokick.toString().take(300)}")
+                    } else {
+                        Log.w(TAG, "⚠️ autokick NOT found in config!")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error /api/configs: ${e.message}")
+                    Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                     withContext(Dispatchers.Main) {
                         errorMessage = "Erreur configuration: ${e.message}"
                     }
@@ -3540,13 +3550,21 @@ fun renderKeyInfo(
             "autokick" -> {
                 // Structure: autokick contient inactivityKick et inactivityTracking
                 val obj = sectionData.jsonObject
+                Log.d("ConfigDetail", "📊 autokick keys: ${obj.keys}")
+                
                 val inactivityKick = obj["inactivityKick"]?.jsonObject
                 val inactivityTracking = obj["inactivityTracking"]?.jsonObject
                 
+                Log.d("ConfigDetail", "🔍 inactivityKick exists: ${inactivityKick != null}")
+                Log.d("ConfigDetail", "🔍 inactivityTracking exists: ${inactivityTracking != null}")
+                
                 if (inactivityKick != null) {
+                    Log.d("ConfigDetail", "📋 inactivityKick keys: ${inactivityKick.keys}")
                     val enabled = inactivityKick["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
                     val delayDays = inactivityKick["delayDays"]?.jsonPrimitive?.intOrNull
                     val trackedCount = inactivityTracking?.size ?: 0
+                    
+                    Log.d("ConfigDetail", "✅ enabled=$enabled, delayDays=$delayDays, tracked=$trackedCount")
                     
                     keyInfos.add("🔔 Inactivité" to if (enabled) "✅ Activé" else "❌ Désactivé")
                     if (delayDays != null && delayDays > 0) {
@@ -3555,11 +3573,15 @@ fun renderKeyInfo(
                     if (trackedCount > 0) {
                         keyInfos.add("👥 Surveillés" to "$trackedCount membres")
                     }
+                } else {
+                    Log.w("ConfigDetail", "⚠️ inactivityKick is NULL - autokick structure: ${obj.toString().take(200)}")
+                    keyInfos.add("⚠️ Inactivité" to "Non configuré")
                 }
                 
                 // Auto-kick rapide (nouveau membre)
                 val enabled = obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
                 val delayMs = obj["delayMs"]?.jsonPrimitive?.longOrNull
+                Log.d("ConfigDetail", "⚡ Auto-kick rapide: enabled=$enabled, delayMs=$delayMs")
                 if (enabled && delayMs != null) {
                     val delayMin = delayMs / 60000
                     keyInfos.add("⚡ Auto-kick rapide" to "✅ $delayMin min")

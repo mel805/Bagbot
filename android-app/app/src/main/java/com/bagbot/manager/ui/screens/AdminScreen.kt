@@ -48,20 +48,40 @@ fun AdminScreen(
     LaunchedEffect(Unit) {
         isLoading = true
         try {
+            android.util.Log.d("AdminScreen", "🔄 Chargement allowed users...")
             val response = api.getJson("/api/admin/allowed-users")
+            android.util.Log.d("AdminScreen", "📥 Response: ${response.take(500)}")
+            
             val data = json.parseToJsonElement(response).jsonObject
-            allowedUsers = data["allowedUsers"]?.jsonArray?.mapNotNull { element ->
+            android.util.Log.d("AdminScreen", "📊 Parsed data keys: ${data.keys}")
+            
+            val usersArray = data["allowedUsers"]?.jsonArray
+            android.util.Log.d("AdminScreen", "👥 Users array size: ${usersArray?.size ?: 0}")
+            
+            allowedUsers = usersArray?.mapNotNull { element ->
                 when {
-                    // Si c'est un objet avec userId
-                    element is JsonObject -> element["userId"]?.safeString()
-                    // Si c'est juste une string
-                    element is JsonPrimitive -> element.safeString()
-                    else -> null
+                    element is JsonObject -> {
+                        val userId = element["userId"]?.safeString()
+                        android.util.Log.d("AdminScreen", "  - Object: userId=$userId")
+                        userId
+                    }
+                    element is JsonPrimitive -> {
+                        val userId = element.safeString()
+                        android.util.Log.d("AdminScreen", "  - Primitive: userId=$userId")
+                        userId
+                    }
+                    else -> {
+                        android.util.Log.w("AdminScreen", "  - Unknown type: ${element::class.simpleName}")
+                        null
+                    }
                 }
             } ?: emptyList()
+            
+            android.util.Log.d("AdminScreen", "✅ Loaded ${allowedUsers.size} users")
         } catch (e: Exception) {
-            android.util.Log.e("AdminScreen", "Error loading allowed users", e)
-            onShowSnackbar("❌ Erreur chargement: ${e.message ?: "Inconnue"}")
+            android.util.Log.e("AdminScreen", "❌ Error loading allowed users: ${e.message}", e)
+            android.util.Log.e("AdminScreen", "Stack trace: ${e.stackTraceToString()}")
+            onShowSnackbar("❌ Erreur: ${e.message ?: "Inconnue"}")
         } finally {
             isLoading = false
         }
