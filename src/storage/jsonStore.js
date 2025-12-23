@@ -151,57 +151,11 @@ async function writeConfig(cfg, updateType = "unknown") {
     catch (_) {}
   }
   
-  // Sauvegardes par serveur (1 fichier par guild pour restauration isolée)
-  try {
-    const backupsDir = path.join(DATA_DIR, 'backups');
-    await fsp.mkdir(backupsDir, { recursive: true });
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    
-    // Créer une sauvegarde pour chaque serveur individuellement
-    for (const [guildId, guildData] of Object.entries(cfg.guilds || {})) {
-      try {
-        const guildBackupDir = path.join(backupsDir, `guild-${guildId}`);
-        await fsp.mkdir(guildBackupDir, { recursive: true });
-        
-        // Format: sauvegarde spécifique au serveur
-        const guildBackup = {
-          guilds: {
-            [guildId]: guildData
-          }
-        };
-        
-        const destGuild = path.join(guildBackupDir, `config-${stamp}.json`);
-        await fsp.writeFile(destGuild, JSON.stringify(guildBackup, null, 2), 'utf8');
-        console.log(`[Backup] Sauvegarde créée pour guild ${guildId}: ${destGuild}`);
-        
-        // Rolling: garder les 50 dernières sauvegardes par serveur
-        const guildEntries = (await fsp.readdir(guildBackupDir)).filter(n => n.endsWith('.json')).sort();
-        if (guildEntries.length > 50) {
-          for (const n of guildEntries.slice(0, guildEntries.length - 50)) {
-            try { await fsp.unlink(path.join(guildBackupDir, n)); } catch (_) {}
-          }
-        }
-      } catch (e) {
-        console.error(`[Backup] Erreur sauvegarde guild ${guildId}:`, e.message);
-      }
-    }
-  } catch (e) {
-    console.error('[Backup] Erreur sauvegardes par serveur:', e.message);
-  }
-  
-  // Sauvegarde globale (rolling 5 fichiers - pour backup complet)
-  try {
-    const backupsDir = path.join(DATA_DIR, 'backups');
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const dest = path.join(backupsDir, `config-global-${stamp}.json`);
-    await fsp.writeFile(dest, JSON.stringify(cfg, null, 2), 'utf8');
-    const globalEntries = (await fsp.readdir(backupsDir)).filter(n => n.startsWith('config-global-') && n.endsWith('.json')).sort();
-    if (globalEntries.length > 5) {
-      for (const n of globalEntries.slice(0, globalEntries.length - 5)) {
-        try { await fsp.unlink(path.join(backupsDir, n)); } catch (_) {}
-      }
-    }
-  } catch (_) {}
+  // BACKUPS AUTOMATIQUES DÉSACTIVÉS
+  // Les backups sont maintenant gérés uniquement par :
+  // 1. HourlyBackupSystem (toutes les heures)
+  // 2. Commande /backup (manuel)
+  // Cela évite de créer trop de fichiers de backup
 }
 
 // Force a snapshot of current state into the configured storage
@@ -315,12 +269,34 @@ async function restoreFromBackupFile(filename, guildId = null) {
       } catch (_) {}
     }
     
-    // Si pas trouvé, chercher dans le répertoire général
+    // Si pas trouvé, chercher dans différents emplacements
     if (!filePath) {
-      filePath = path.join(backupsDir, filename);
+      const candidates = [
+        path.join(backupsDir, filename),
+        path.join(backupsDir, 'hourly', filename),
+        path.join(backupsDir, 'external-hourly', filename),
+        path.join('/var/data/backups', filename),
+        path.join('/var/data/backups/external-hourly', filename)
+      ];
+      
+      for (const candidate of candidates) {
+        try {
+          await fsp.access(candidate, fs.constants.R_OK);
+          filePath = candidate;
+          console.log(`[Restore] Fichier trouvé: ${candidate}`);
+          break;
+        } catch (_) {
+          // Continue avec le prochain candidat
+        }
+      }
     }
     
-    // Vérifier que le fichier existe
+    // Vérifier que le fichier a été trouvé
+    if (!filePath) {
+      throw new Error(`Fichier introuvable: ${filename} dans aucun emplacement`);
+    }
+    
+    // Vérifier l'accès final
     await fsp.access(filePath, fs.constants.R_OK);
     
     // Lire et parser le contenu

@@ -9,7 +9,7 @@ const path = require('path');
 
 class SimpleBackupSystem {
   constructor() {
-    this.backupDir = '/var/data/backups';
+    this.backupDir = '/home/bagbot/Bag-bot/data/backups';
     this.configPath = '/home/bagbot/Bag-bot/data/config.json';
   }
 

@@ -1522,10 +1522,26 @@ app.get('/backups', (req, res) => {
       .filter(f => f.endsWith('.json'))
       .map(f => {
         const stats = fs.statSync(path.join(guildBackupsDir, f));
+        
+        // Lire le fichier pour compter les utilisateurs
+        let userCount = 0;
+        try {
+          const content = fs.readFileSync(path.join(guildBackupsDir, f), 'utf8');
+          const data = JSON.parse(content);
+          if (data.economy?.balances) {
+            userCount = Object.keys(data.economy.balances).length;
+          }
+        } catch (e) {
+          // Ignore errors reading backup
+        }
+        
         return {
           filename: f,
           size: stats.size,
-          created: stats.birthtime.toISOString()
+          sizeKB: Math.round(stats.size / 1024),
+          created: stats.birthtime.toISOString(),
+          date: new Date(stats.birthtime).toLocaleString('fr-FR'),
+          users: userCount
         };
       })
       .sort((a, b) => new Date(b.created) - new Date(a.created));

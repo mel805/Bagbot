@@ -5898,6 +5898,58 @@ client.once(Events.ClientReady, async (readyClient) => {
   })();
   // Boot persistance dès le départ et journaliser le mode choisi
   ensureStorageExists().then(()=>{console.log('[bot] Storage initialized'); loadTDState();}).catch((e)=>console.warn('[bot] Storage init error:', e?.message||e));
+
+  // === SYSTÈME DE SAUVEGARDE HORAIRE ===
+  try {
+    const HourlyBackupSystem = require('./storage/hourlyBackupSystem');
+    global.hourlyBackupSystem = new HourlyBackupSystem();
+    global.hourlyBackupSystem.start();
+    console.log('[Bot] ✅ Système de backup horaire démarré (rétention: 3 jours)');
+  } catch (error) {
+    console.error('[Bot] ❌ Erreur démarrage backup horaire:', error.message);
+  }
+
+  // === NETTOYAGE AUTOMATIQUE DES UTILISATEURS PARTIS ===
+  // Nettoyer tous les jours à 3h du matin
+  const scheduleDailyCleanup = () => {
+    const now = new Date();
+    const next3AM = new Date(now);
+    next3AM.setHours(3, 0, 0, 0);
+    
+    // Si 3h est déjà passé aujourd'hui, programmer pour demain
+    if (next3AM <= now) {
+      next3AM.setDate(next3AM.getDate() + 1);
+    }
+    
+    const msUntil3AM = next3AM.getTime() - now.getTime();
+    
+    console.log(`[Bot] Nettoyage automatique programmé pour ${next3AM.toLocaleString('fr-FR')}`);
+    
+    setTimeout(async () => {
+      try {
+        console.log('[Bot] === NETTOYAGE AUTOMATIQUE DES UTILISATEURS ===');
+        const { cleanAllGuilds } = require('./utils/userCleanup');
+        const result = await cleanAllGuilds(client);
+        
+        if (result.success) {
+          console.log(`[Bot] ✅ Nettoyage terminé: ${result.totalRemoved} utilisateurs supprimés`);
+        } else {
+          console.error('[Bot] ❌ Erreur nettoyage:', result.error);
+        }
+      } catch (error) {
+        console.error('[Bot] ❌ Erreur nettoyage automatique:', error.message);
+      }
+      
+      // Reprogrammer pour le lendemain
+      scheduleDailyCleanup();
+    }, msUntil3AM);
+  };
+  
+  try {
+    scheduleDailyCleanup();
+  } catch (error) {
+    console.error('[Bot] ❌ Erreur programmation nettoyage:', error.message);
+  }
   
   // Initialiser le gestionnaire de guilds
   try {
@@ -6742,8 +6794,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
       }
       
-      // Select menus mot-caché
-      if (interaction.isStringSelectMenu && interaction.isStringSelectMenu() && interaction.customId?.startsWith('motcache_select')) {
+      // Select menus mot-caché (string et channel)
+      if ((interaction.isStringSelectMenu && interaction.isStringSelectMenu() && interaction.customId?.startsWith('motcache_select')) ||
+          (interaction.isChannelSelectMenu && interaction.isChannelSelectMenu() && interaction.customId?.startsWith('motcache_channelselect'))) {
         console.log(`[MOT-CACHE] Select menu détecté: ${interaction.customId}`);
         try {
           await motCacheHandlers.handleMotCacheSelect(interaction);
@@ -12535,6 +12588,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (_) {}
 });
 client.on(Events.MessageCreate, async (message) => {
+  console.log(`[MESSAGE-DEBUG] Message reçu de ${message.author?.username || 'unknown'}`);
   try {
     if (!message.guild) return;
     
@@ -12745,6 +12799,20 @@ client.on(Events.MessageCreate, async (message) => {
       }
     } catch (_) {}
 
+    // ========== HANDLER MOT-CACHÉ (lettres aléatoires) ==========
+    // IMPORTANT: Doit être AVANT le check des levels pour ne pas être bloqué
+    console.log('[DEBUG] Avant appel mot-cache handler');
+    try {
+      const motCacheHandler = require('./modules/mot-cache-handler');
+      console.log('[DEBUG] Handler chargé, appel handleMessage...');
+      await motCacheHandler.handleMessage(message);
+      console.log('[DEBUG] handleMessage terminé');
+    } catch (err) {
+      // Log all errors for debugging
+      console.error('[MOT-CACHE] Error in message handler:', err);
+      console.error('[MOT-CACHE] Error stack:', err.stack);
+    }
+
     const levels = await getLevelsConfig(message.guild.id);
     if (!levels?.enabled) return;
     const stats = await getUserStats(message.guild.id, message.author.id);
@@ -12794,16 +12862,10 @@ client.on(Events.MessageCreate, async (message) => {
         console.log(`[ECONOMY DEBUG] Message reward: User ${message.author.id} in guild ${message.guild.id}: ${beforeAmount} + ${reward} = ${userEco.amount}`);
       }
     } catch (_) {}
-
-    // ========== HANDLER MOT-CACHÉ (lettres aléatoires) ==========
-    try {
-      const motCacheHandler = require('./modules/mot-cache-handler');
-      await motCacheHandler.handleMessage(message);
-    } catch (err) {
-      // Log all errors for debugging
-      console.error('[MOT-CACHE] Error in message handler:', err);
-    }
-  } catch (_) {}
+  } catch (mainErr) {
+    console.error('[MESSAGE-CREATE] ERREUR PRINCIPALE:', mainErr.message);
+    console.error('[MESSAGE-CREATE] STACK:', mainErr.stack);
+  }
 });
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
   try {
