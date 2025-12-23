@@ -257,6 +257,20 @@ async function writeConfig(cfg, updateType = "unknown") {
     }
   }
 
+  // If the current config file is unreadable/corrupted, prevSnapshot may be null.
+  // In that case, fall back to the latest valid backup to still detect catastrophic drops.
+  if (!prevSnapshot) {
+    try {
+      const latestPrev = await findLatestBackupFile();
+      if (latestPrev) {
+        prevSnapshot = await loadConfigFromFile(latestPrev);
+        try { console.warn('[Protection] prevSnapshot chargé depuis backup (config.json illisible):', latestPrev); } catch (_) {}
+      }
+    } catch (_) {
+      // keep null; validation will still run but without historical comparison
+    }
+  }
+
   const validation = validateConfigBeforeWrite(cfg, null, updateType, prevSnapshot);
   if (!validation.valid) {
     console.error('[Protection] ❌ REFUS D ÉCRITURE: Config invalide -', validation.reason);
