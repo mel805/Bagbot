@@ -552,6 +552,49 @@ app.get('/api/discord/members', async (req, res) => {
   }
 });
 
+// GET /api/discord/admins - Liste des ADMINS uniquement (exclut bots et membres simples)
+app.get('/api/discord/admins', async (req, res) => {
+  try {
+    const guild = req.app.locals.client.guilds.cache.get(GUILD);
+    if (!guild) {
+      return res.status(404).json({ error: 'Guild not found' });
+    }
+    
+    await guild.members.fetch();
+    
+    // Récupérer la config pour les staffRoleIds
+    const config = await readConfig();
+    const guildConfig = config.guilds?.[GUILD] || {};
+    const staffRoleIds = guildConfig.staffRoleIds || [];
+    
+    const admins = {};
+    const roles = {};
+    
+    guild.members.cache.forEach(member => {
+      // Exclure les bots
+      if (member.user.bot) {
+        return;
+      }
+      
+      // Vérifier si le membre est admin
+      const isFounder = member.id === FOUNDER_ID;
+      const hasAdminPermission = member.permissions.has('Administrator');
+      const hasStaffRole = member.roles.cache.some(role => staffRoleIds.includes(role.id));
+      
+      // Inclure uniquement les admins/staff
+      if (isFounder || hasAdminPermission || hasStaffRole) {
+        admins[member.id] = member.user.username;
+        roles[member.id] = member.roles.cache.map(r => r.id);
+      }
+    });
+    
+    res.json({ members: admins, roles });
+  } catch (error) {
+    console.error('[BOT-API] Error fetching admins:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // GET /api/discord/channels - Liste des channels (PUBLIC)
 app.get('/api/discord/channels', async (req, res) => {
   try {

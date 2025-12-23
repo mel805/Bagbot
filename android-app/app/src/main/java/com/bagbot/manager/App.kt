@@ -1111,6 +1111,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     
     // États données serveur
     var members by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var adminMembers by remember { mutableStateOf<Map<String, String>>(emptyMap()) } // Uniquement les admins (pour chat staff)
     var memberRoles by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     var channels by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     var roles by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
@@ -1215,7 +1216,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     }
                 }
                 
-                // 3. Membres et rôles
+                // 3. Membres et rôles (TOUS les membres pour la config)
                 loadingMessage = "Chargement des membres..."
                 Log.d(TAG, "Fetching /api/discord/members")
                 try {
@@ -1238,6 +1239,25 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                     Log.d(TAG, "Loaded ${members.size} members with ${memberRoles.size} role mappings")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error /api/discord/members: ${e.message}")
+                }
+                
+                // 3b. Admins uniquement (pour chat staff - exclut bots et membres simples)
+                loadingMessage = "Chargement des admins..."
+                Log.d(TAG, "Fetching /api/discord/admins")
+                try {
+                    val adminsJson = api.getJson("/api/discord/admins")
+                    Log.d(TAG, "Response /api/discord/admins: ${adminsJson.take(150)}")
+                    val adminsData = json.parseToJsonElement(adminsJson).jsonObject
+                    
+                    withContext(Dispatchers.Main) {
+                        // L'API retourne { "members": {...}, "roles": {...} }
+                        adminsData["members"]?.jsonObject?.let { adminsObj ->
+                            adminMembers = adminsObj.mapValues { it.value.safeStringOrEmpty() }
+                        }
+                    }
+                    Log.d(TAG, "Loaded ${adminMembers.size} admin members (bots and simple members excluded)")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error /api/discord/admins: ${e.message}")
                 }
                 
                 // 4. Salons
@@ -1549,7 +1569,7 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                                 json = json,
                                 scope = scope,
                                 snackbar = snackbar,
-                                members = members,
+                                members = adminMembers, // Utiliser adminMembers (uniquement les admins)
                                 userInfo = userInfo,
                                 isFounder = isFounder,
                                 isAdmin = isAdmin
