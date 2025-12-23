@@ -162,15 +162,17 @@ module.exports = {
         if (!ownerId || !ensureOwner(interaction, ownerId)) return true;
 
         if (action === 'cancel') {
+          try { await interaction.deferUpdate(); } catch (_) {}
           sessions.delete(ownerId);
-          try { await interaction.update({ content: '✅ Tribunal annulé.', embeds: [], components: [] }); } catch (_) {}
+          try { await interaction.editReply({ content: '✅ Tribunal annulé.', embeds: [], components: [] }); } catch (_) {}
           return true;
         }
 
         if (action === 'skip_lawyer') {
+          try { await interaction.deferUpdate(); } catch (_) {}
           const s = upsertSession(ownerId, { lawyerId: null, step: 'charge' });
           const embed = buildEmbed('charge', s);
-          try { await interaction.update({ embeds: [embed], components: rowCharge(ownerId) }); } catch (_) {}
+          try { await interaction.editReply({ embeds: [embed], components: rowCharge(ownerId) }); } catch (_) {}
           return true;
         }
 
@@ -191,9 +193,11 @@ module.exports = {
         }
 
         if (action === 'confirm') {
+          // Ack immediately to avoid "application did not respond"
+          try { await interaction.deferUpdate(); } catch (_) {}
           const s = getSession(ownerId);
           if (!s || !s.accusedId) {
-            try { await interaction.reply({ content: '❌ Session expirée. Relance `/tribunal`.', ephemeral: true }); } catch (_) {}
+            try { await interaction.editReply({ content: '❌ Session expirée. Relance `/tribunal`.', embeds: [], components: [] }); } catch (_) {}
             return true;
           }
           const embed = new EmbedBuilder()
@@ -209,9 +213,9 @@ module.exports = {
             .setTimestamp(new Date());
 
           // Post the case in the current channel (public), then close the wizard.
-          try { await interaction.channel.send({ embeds: [embed] }); } catch (_) {}
+          try { await interaction.channel?.send?.({ embeds: [embed] }); } catch (_) {}
           sessions.delete(ownerId);
-          try { await interaction.update({ content: '✅ Dossier envoyé au tribunal.', embeds: [], components: [] }); } catch (_) {}
+          try { await interaction.editReply({ content: '✅ Dossier envoyé au tribunal.', embeds: [], components: [] }); } catch (_) {}
           return true;
         }
 
@@ -226,16 +230,18 @@ module.exports = {
         if (!picked) return true;
 
         if (kind === 'accused') {
+          try { await interaction.deferUpdate(); } catch (_) {}
           const s = upsertSession(ownerId, { accusedId: picked, step: 'lawyer' });
           const embed = buildEmbed('lawyer', s);
-          try { await interaction.update({ embeds: [embed], components: rowLawyer(ownerId) }); } catch (_) {}
+          try { await interaction.editReply({ embeds: [embed], components: rowLawyer(ownerId) }); } catch (_) {}
           return true;
         }
 
         if (kind === 'lawyer') {
+          try { await interaction.deferUpdate(); } catch (_) {}
           const s = upsertSession(ownerId, { lawyerId: picked, step: 'charge' });
           const embed = buildEmbed('charge', s);
-          try { await interaction.update({ embeds: [embed], components: rowCharge(ownerId) }); } catch (_) {}
+          try { await interaction.editReply({ embeds: [embed], components: rowCharge(ownerId) }); } catch (_) {}
           return true;
         }
 
