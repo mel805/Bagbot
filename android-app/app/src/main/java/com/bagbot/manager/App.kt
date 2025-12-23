@@ -97,7 +97,7 @@ val configGroups = listOf(
         "👮 Modération & Sécurité",
         Icons.Default.Security,
         Color(0xFFE53935),
-        listOf("logs", "autokick", "inactivity", "staffRoleIds", "quarantineRoleId")
+        listOf("logs", "autokick", "staffRoleIds", "quarantineRoleId", "tribunal")
     ),
     ConfigGroup(
         "gamification",
@@ -1296,13 +1296,23 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
                 Log.d(TAG, "Fetching /api/configs")
                 try {
                     val configJson = api.getJson("/api/configs")
-                    Log.d(TAG, "Response /api/configs: ${configJson.take(200)}")
+                    Log.d(TAG, "Response /api/configs: ${configJson.take(500)}")
                     withContext(Dispatchers.Main) {
                         configData = json.parseToJsonElement(configJson).jsonObject
                     }
                     Log.d(TAG, "Config loaded: ${configData?.keys?.size} sections")
+                    Log.d(TAG, "Config keys: ${configData?.keys}")
+                    
+                    // Log spécifique pour autokick
+                    val autokick = configData?.get("autokick")
+                    if (autokick != null) {
+                        Log.d(TAG, "✅ autokick found: ${autokick.toString().take(300)}")
+                    } else {
+                        Log.w(TAG, "⚠️ autokick NOT found in config!")
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error /api/configs: ${e.message}")
+                    Log.e(TAG, "Stack trace: ${e.stackTraceToString()}")
                     withContext(Dispatchers.Main) {
                         errorMessage = "Erreur configuration: ${e.message}"
                     }
@@ -3515,10 +3525,66 @@ fun renderKeyInfo(
                     keyInfos.add("🔒 Rôle quarantaine" to "${roles[roleId] ?: "Inconnu"} ($roleId)")
                 }
             }
-            "inactivity" -> {
+            "tribunal" -> {
                 val obj = sectionData.jsonObject
-                obj["kickAfterDays"]?.jsonPrimitive?.intOrNull?.let { days ->
-                    keyInfos.add("⏰ Kick après" to "$days jours")
+                val enabled = obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
+                val accuseRoleId = obj["accuseRoleId"]?.jsonPrimitive?.contentOrNull
+                val avocatRoleId = obj["avocatRoleId"]?.jsonPrimitive?.contentOrNull
+                val jugeRoleId = obj["jugeRoleId"]?.jsonPrimitive?.contentOrNull
+                val categoryId = obj["categoryId"]?.jsonPrimitive?.contentOrNull
+                
+                keyInfos.add("⚖️ Système activé" to if (enabled) "✅ Oui" else "❌ Non")
+                if (accuseRoleId != null) {
+                    keyInfos.add("⚖️ Rôle Accusé" to "${roles[accuseRoleId] ?: "Inconnu"} ($accuseRoleId)")
+                }
+                if (avocatRoleId != null) {
+                    keyInfos.add("👔 Rôle Avocat" to "${roles[avocatRoleId] ?: "Inconnu"} ($avocatRoleId)")
+                }
+                if (jugeRoleId != null) {
+                    keyInfos.add("👨‍⚖️ Rôle Juge" to "${roles[jugeRoleId] ?: "Inconnu"} ($jugeRoleId)")
+                }
+                if (categoryId != null) {
+                    keyInfos.add("📁 Catégorie Tribunaux" to "${channels[categoryId] ?: "Inconnue"} ($categoryId)")
+                }
+            }
+            "autokick" -> {
+                // Structure: autokick contient inactivityKick et inactivityTracking
+                val obj = sectionData.jsonObject
+                Log.d("ConfigDetail", "📊 autokick keys: ${obj.keys}")
+                
+                val inactivityKick = obj["inactivityKick"]?.jsonObject
+                val inactivityTracking = obj["inactivityTracking"]?.jsonObject
+                
+                Log.d("ConfigDetail", "🔍 inactivityKick exists: ${inactivityKick != null}")
+                Log.d("ConfigDetail", "🔍 inactivityTracking exists: ${inactivityTracking != null}")
+                
+                if (inactivityKick != null) {
+                    Log.d("ConfigDetail", "📋 inactivityKick keys: ${inactivityKick.keys}")
+                    val enabled = inactivityKick["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
+                    val delayDays = inactivityKick["delayDays"]?.jsonPrimitive?.intOrNull
+                    val trackedCount = inactivityTracking?.size ?: 0
+                    
+                    Log.d("ConfigDetail", "✅ enabled=$enabled, delayDays=$delayDays, tracked=$trackedCount")
+                    
+                    keyInfos.add("🔔 Inactivité" to if (enabled) "✅ Activé" else "❌ Désactivé")
+                    if (delayDays != null && delayDays > 0) {
+                        keyInfos.add("⏰ Kick après" to "$delayDays jours")
+                    }
+                    if (trackedCount > 0) {
+                        keyInfos.add("👥 Surveillés" to "$trackedCount membres")
+                    }
+                } else {
+                    Log.w("ConfigDetail", "⚠️ inactivityKick is NULL - autokick structure: ${obj.toString().take(200)}")
+                    keyInfos.add("⚠️ Inactivité" to "Non configuré")
+                }
+                
+                // Auto-kick rapide (nouveau membre)
+                val enabled = obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
+                val delayMs = obj["delayMs"]?.jsonPrimitive?.longOrNull
+                Log.d("ConfigDetail", "⚡ Auto-kick rapide: enabled=$enabled, delayMs=$delayMs")
+                if (enabled && delayMs != null) {
+                    val delayMin = delayMs / 60000
+                    keyInfos.add("⚡ Auto-kick rapide" to "✅ $delayMin min")
                 }
             }
             "economy" -> {
@@ -3741,7 +3807,7 @@ fun getSectionDisplayName(key: String): String {
         "tickets" -> "🎫 Tickets"
         "welcome" -> "👋 Bienvenue"
         "goodbye" -> "👋 Au revoir"
-        "inactivity" -> "💤 Inactivité"
+        "autokick" -> "🦶 Auto-kick & Inactivité"
         "levels" -> "📈 Niveaux/XP"
         "logs" -> "📝 Logs"
         "autokick" -> "🦶 Auto-kick"
@@ -3755,6 +3821,7 @@ fun getSectionDisplayName(key: String): String {
         "geo" -> "🌍 Géolocalisation"
         "quarantineRoleId" -> "🔒 Rôle quarantaine"
         "staffRoleIds" -> "👮 Rôles staff"
+        "tribunal" -> "⚖️ Tribunal"
         "truthdare" -> "🎲 Action ou vérité"
         else -> "⚙️ $key"
     }
@@ -4304,9 +4371,14 @@ fun ConfigEditorScreen(
                     goodbyeChannel = data["channelId"]?.jsonPrimitive?.contentOrNull
                     goodbyeMessage = data["message"]?.jsonPrimitive?.contentOrNull ?: ""
                 }
-                "inactivity" -> {
-                    inactivityThresholdDays = data["thresholdDays"]?.jsonPrimitive?.contentOrNull ?: ""
-                    inactivityExemptRoles = data["exemptRoles"]?.jsonArray.safeStringList()
+                "autokick" -> {
+                    // Structure: autokick.inactivityKick
+                    val inactivityKick = data["inactivityKick"]?.jsonObject
+                    if (inactivityKick != null) {
+                        val delayDays = inactivityKick["delayDays"]?.jsonPrimitive?.intOrNull ?: 30
+                        inactivityThresholdDays = delayDays.toString()
+                        inactivityExemptRoles = inactivityKick["excludedRoleIds"]?.jsonArray.safeStringList()
+                    }
                 }
             }
         }
@@ -4342,11 +4414,17 @@ fun ConfigEditorScreen(
                                 goodbyeChannel?.let { put("channelId", it) }
                                 if (goodbyeMessage.isNotBlank()) put("message", goodbyeMessage)
                             }
-                            "inactivity" -> {
-                                if (inactivityThresholdDays.isNotBlank()) {
-                                    put("thresholdDays", inactivityThresholdDays.toIntOrNull() ?: 30)
+                            "autokick" -> {
+                                // Sauvegarder dans inactivityKick
+                                val inactivityKick = buildJsonObject {
+                                    put("enabled", true) // Activer lors de la sauvegarde
+                                    if (inactivityThresholdDays.isNotBlank()) {
+                                        put("delayDays", inactivityThresholdDays.toIntOrNull() ?: 30)
+                                    }
+                                    put("excludedRoleIds", JsonArray(inactivityExemptRoles.map { JsonPrimitive(it) }))
+                                    put("trackActivity", true)
                                 }
-                                put("exemptRoles", JsonArray(inactivityExemptRoles.map { JsonPrimitive(it) }))
+                                put("inactivityKick", inactivityKick)
                             }
                         }
                     }
@@ -4388,7 +4466,7 @@ fun ConfigEditorScreen(
                             "tickets" -> "🎫 Configuration Tickets"
                             "welcome" -> "👋 Configuration Bienvenue"
                             "goodbye" -> "👋 Configuration Au revoir"
-                            "inactivity" -> "💤 Configuration Inactivité"
+                            "autokick" -> "🦶 Configuration Auto-kick & Inactivité"
                             else -> "Configuration: $sectionKey"
                         },
                         style = MaterialTheme.typography.titleLarge,
@@ -4589,7 +4667,7 @@ fun ConfigEditorScreen(
                 }
             }
             
-            "inactivity" -> {
+            "autokick" -> {
                 item {
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
                         Column(Modifier.padding(16.dp)) {
