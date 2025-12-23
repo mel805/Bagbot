@@ -29,6 +29,7 @@ class HourlyBackupSystem {
   start() {
     console.log('[HourlyBackup] 🚀 Démarrage du système de sauvegarde horaire');
     console.log(`[HourlyBackup] Rétention: ${this.retentionHours}h (${this.retentionHours / 24} jours)`);
+    console.log(`[HourlyBackup] Fréquence: Toutes les heures`);
     
     // Créer une sauvegarde immédiate au démarrage
     this.createBackup().catch(err => {
@@ -43,13 +44,13 @@ class HourlyBackupSystem {
     }, 60 * 60 * 1000); // 1 heure
     
     // Nettoyer les vieux backups toutes les 6 heures
-    setInterval(() => {
+    this.cleanupInterval = setInterval(() => {
       this.cleanOldBackups().catch(err => {
         console.error('[HourlyBackup] Erreur nettoyage:', err.message);
       });
     }, 6 * 60 * 60 * 1000); // 6 heures
     
-    console.log('[HourlyBackup] ✅ Système démarré');
+    console.log('[HourlyBackup] ✅ Système démarré - Prochaine sauvegarde dans 1 heure');
   }
 
   /**
@@ -59,8 +60,12 @@ class HourlyBackupSystem {
     if (this.backupInterval) {
       clearInterval(this.backupInterval);
       this.backupInterval = null;
-      console.log('[HourlyBackup] ⏹️  Système arrêté');
     }
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    console.log('[HourlyBackup] ⏹️  Système arrêté');
   }
 
   /**
