@@ -54,6 +54,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.*
 import com.bagbot.manager.ui.theme.BagBotTheme
 import com.bagbot.manager.ui.screens.SplashScreen
+import com.bagbot.manager.ui.screens.AdminScreen
 import com.bagbot.manager.ui.screens.ConfigDashboardScreen
 import com.bagbot.manager.ui.screens.MotCacheScreen
 import com.bagbot.manager.ui.components.MemberSelector
@@ -1068,7 +1069,7 @@ fun StaffMainScreen(
             }
             when (selectedStaffTab) {
                 0 -> StaffChatScreen(api, json, scope, snackbar, members, userInfo)
-                1 -> AdminScreenWithAccess(members, api, json, scope, snackbar)
+                1 -> AdminScreen(api, members) { msg -> scope.launch { snackbar.showSnackbar(msg) } }
                 2 -> LogsScreen(api, json, scope, snackbar)
             }
         }
