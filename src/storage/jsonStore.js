@@ -27,6 +27,75 @@ function setDataDir(dir) {
   CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 }
 
+function unwrapBackupData(backupData) {
+  // Format 1: { data, metadata }
+  if (backupData && typeof backupData === 'object' && backupData.data && backupData.metadata) return backupData.data;
+  // Format 2: config direct { guilds: ... }
+  if (backupData && typeof backupData === 'object' && backupData.guilds) return backupData;
+  return null;
+}
+
+async function loadConfigFromFile(filePath) {
+  const raw = await fsp.readFile(filePath, 'utf8');
+  const parsed = JSON.parse(raw);
+  const unwrapped = unwrapBackupData(parsed);
+  if (!unwrapped) throw new Error('Format de sauvegarde non reconnu');
+  if (!unwrapped.guilds || typeof unwrapped.guilds !== 'object') throw new Error('Backup invalide: pas de guilds');
+  return unwrapped;
+}
+
+async function findLatestBackupFile(guildId = null) {
+  const candidates = [];
+  const backupsDir = path.join(DATA_DIR, 'backups');
+  const varBackupsDir = '/var/data/backups';
+
+  // Per-guild (si demandé)
+  if (guildId) {
+    candidates.push(path.join(backupsDir, `guild-${guildId}`));
+    candidates.push(path.join(varBackupsDir, `guild-${guildId}`));
+  }
+
+  // Dossiers connus
+  candidates.push(path.join(backupsDir, 'hourly'));
+  candidates.push(path.join(backupsDir, 'external-hourly'));
+  candidates.push(backupsDir);
+  candidates.push(path.join(varBackupsDir, 'hourly'));
+  candidates.push(path.join(varBackupsDir, 'external-hourly'));
+  candidates.push(varBackupsDir);
+
+  const files = [];
+  for (const dir of candidates) {
+    try {
+      await fsp.access(dir, fs.constants.R_OK);
+      const names = await fsp.readdir(dir).catch(() => []);
+      for (const n of names) {
+        if (!n.toLowerCase().endsWith('.json')) continue;
+        const full = path.join(dir, n);
+        try {
+          const st = await fsp.stat(full);
+          if (!st.isFile()) continue;
+          files.push({ full, mtimeMs: st.mtimeMs });
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+  for (const f of files.slice(0, 300)) {
+    try {
+      const cfg = await loadConfigFromFile(f.full);
+      if (guildId && !(cfg.guilds && cfg.guilds[guildId])) continue;
+      // Ne pas accepter une sauvegarde "vide"
+      if (Object.keys(cfg.guilds || {}).length === 0) continue;
+      return f.full;
+    } catch (_) {
+      // ignorer fichier illisible/corrompu
+    }
+  }
+  return null;
+}
+
 async function ensureStorageExists() {
   if (USE_PG && pgHealthy) {
     try {
@@ -82,10 +151,27 @@ async function ensureStorageExists() {
   try {
     await fsp.access(CONFIG_PATH, fs.constants.F_OK);
   } catch (_) {
-    // NE JAMAIS créer de config vide - ERREUR si fichier manquant
-    console.error("[storage] ERREUR CRITIQUE: config.json introuvable à", CONFIG_PATH);
-    console.error("[storage] Restaurez depuis une sauvegarde avec: node restore-backup.js");
-    throw new Error("config.json introuvable - Restauration requise");
+    // Si config.json manque, tenter une restauration automatique depuis le dernier backup
+    try {
+      const latest = await findLatestBackupFile();
+      if (latest) {
+        const restored = await loadConfigFromFile(latest);
+        try { await fsp.mkdir(DATA_DIR, { recursive: true }); } catch (_) {}
+        const tmp = CONFIG_PATH + '.tmp';
+        await fsp.writeFile(tmp, JSON.stringify(restored, null, 2), 'utf8');
+        try { await fsp.rename(tmp, CONFIG_PATH); } catch (_) { await fsp.writeFile(CONFIG_PATH, JSON.stringify(restored, null, 2), 'utf8'); }
+        console.warn('[storage] config.json manquant -> restauré automatiquement depuis:', latest);
+      } else {
+        // NE JAMAIS créer de config vide - ERREUR si fichier manquant
+        console.error("[storage] ERREUR CRITIQUE: config.json introuvable à", CONFIG_PATH);
+        console.error("[storage] Aucun backup trouvé pour restauration automatique.");
+        console.error("[storage] Restaurez depuis une sauvegarde avec: /restore ou node restore-backup.js");
+        throw new Error("config.json introuvable - Restauration requise");
+      }
+    } catch (e) {
+      console.error("[storage] Restauration automatique impossible:", e?.message || e);
+      throw e;
+    }
   }
   try { console.log('[storage] Mode: fichier JSON ->', CONFIG_PATH); } catch (_) {}
 }
@@ -99,8 +185,8 @@ async function readConfig() {
       try {
         const { rows } = await client.query('SELECT data FROM app_config WHERE id = 1');
         const data = rows?.[0]?.data || { guilds: {} };
-        if (!data || typeof data !== 'object') return { guilds: {} };
-        if (!data.guilds || typeof data.guilds !== 'object') data.guilds = {};
+        if (!data || typeof data !== 'object') throw new Error('Postgres config invalide (pas un objet)');
+        if (!data.guilds || typeof data.guilds !== 'object') throw new Error('Postgres config invalide (pas de guilds)');
         return data;
       } finally {
         client.release();
@@ -113,16 +199,35 @@ async function readConfig() {
   try {
     const raw = await fsp.readFile(CONFIG_PATH, 'utf8');
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return { guilds: {} };
-    if (!parsed.guilds || typeof parsed.guilds !== 'object') parsed.guilds = {};
+    if (!parsed || typeof parsed !== 'object') throw new Error('config.json invalide (pas un objet)');
+    if (!parsed.guilds || typeof parsed.guilds !== 'object') throw new Error('config.json invalide (pas de guilds)');
     return parsed;
-  } catch (_) {
-    // Si le fichier est manquant ou corrompu, on tente de régénérer
+  } catch (e) {
+    // Si le fichier est corrompu/illisible, NE PAS écrire de config vide.
+    // On tente une restauration automatique depuis le dernier backup.
     try {
-      await fsp.mkdir(DATA_DIR, { recursive: true });
-      await fsp.writeFile(CONFIG_PATH, JSON.stringify({ guilds: {} }, null, 2), 'utf8');
-    } catch (_) {}
-    return { guilds: {} };
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      try {
+        const corruptPath = CONFIG_PATH + `.corrupt-${ts}`;
+        await fsp.rename(CONFIG_PATH, corruptPath);
+        console.error('[storage] config.json corrompu -> déplacé vers:', corruptPath);
+      } catch (_) {}
+
+      const latest = await findLatestBackupFile();
+      if (!latest) {
+        console.error('[storage] Aucun backup trouvé pour restaurer automatiquement.');
+        throw new Error('config.json corrompu et aucun backup disponible');
+      }
+      const restored = await loadConfigFromFile(latest);
+      const tmp = CONFIG_PATH + '.tmp';
+      await fsp.writeFile(tmp, JSON.stringify(restored, null, 2), 'utf8');
+      try { await fsp.rename(tmp, CONFIG_PATH); } catch (_) { await fsp.writeFile(CONFIG_PATH, JSON.stringify(restored, null, 2), 'utf8'); }
+      console.warn('[storage] config.json restauré automatiquement depuis:', latest);
+      return restored;
+    } catch (restoreErr) {
+      console.error('[storage] ❌ Lecture config impossible:', e?.message || e);
+      throw restoreErr;
+    }
   }
 }
 
@@ -130,7 +235,29 @@ async function writeConfig(cfg, updateType = "unknown") {
   await ensureStorageExists();
   
   // 🛡️ PROTECTION ANTI-CORRUPTION
-  const validation = validateConfigBeforeWrite(cfg, null, updateType);
+  let prevSnapshot = null;
+  if (USE_PG && pgHealthy) {
+    try {
+      const pool = await getPg();
+      const client = await pool.connect();
+      try {
+        const { rows } = await client.query('SELECT data FROM app_config WHERE id = 1');
+        prevSnapshot = rows?.[0]?.data || null;
+      } finally {
+        client.release();
+      }
+    } catch (_) {
+      prevSnapshot = null;
+    }
+  } else {
+    try {
+      prevSnapshot = await loadConfigFromFile(CONFIG_PATH);
+    } catch (_) {
+      prevSnapshot = null;
+    }
+  }
+
+  const validation = validateConfigBeforeWrite(cfg, null, updateType, prevSnapshot);
   if (!validation.valid) {
     console.error('[Protection] ❌ REFUS D ÉCRITURE: Config invalide -', validation.reason);
     console.error('[Protection] 🔄 Le config actuel reste intact');
@@ -208,39 +335,34 @@ async function restoreLatest() {
   let data = null;
   let source = 'unknown';
 
-  // 1. Essayer les sauvegardes globales en priorité
+  // 1. Essayer le dernier backup valide (tous emplacements connus)
   if (!data) {
     try {
-      const backupsDir = path.join(DATA_DIR, 'backups');
-      const globalBackups = (await fsp.readdir(backupsDir))
-        .filter(n => n.startsWith('config-global-') && n.endsWith('.json'))
-        .sort();
-      
-      if (globalBackups.length) {
-        const latest = path.join(backupsDir, globalBackups[globalBackups.length - 1]);
-        const raw = await fsp.readFile(latest, 'utf8');
-        data = JSON.parse(raw);
-        source = 'file_backup_global';
-        console.log('[Restore] Restauration depuis sauvegarde globale:', globalBackups[globalBackups.length - 1]);
+      const latest = await findLatestBackupFile();
+      if (latest) {
+        data = await loadConfigFromFile(latest);
+        source = `latest_backup:${latest}`;
+        console.log('[Restore] Restauration depuis dernier backup:', latest);
       }
     } catch (_) {}
   }
 
-  // 2. Dernier recours : fichier de config principal
+  // 2. Dernier recours : fichier de config principal (si lisible)
   if (!data) {
-    try { 
-      const raw = await fsp.readFile(CONFIG_PATH, 'utf8'); 
-      data = JSON.parse(raw);
+    try {
+      data = await loadConfigFromFile(CONFIG_PATH);
       source = 'file_current';
-    } catch (_) { 
-      data = { guilds: {} };
-      source = 'default';
-    }
+    } catch (_) {}
+  }
+
+  // 3. Ne jamais restaurer un état "vide" par défaut
+  if (!data) {
+    throw new Error('Aucun backup valide trouvé pour restoreLatest()');
   }
 
   // Appliquer la restauration
   if (data) {
-    await writeConfig(data);
+    await writeConfig(data, "restore");
     // Synchroniser avec le fichier local
     try {
       await fsp.mkdir(DATA_DIR, { recursive: true });
@@ -317,7 +439,7 @@ async function restoreFromBackupFile(filename, guildId = null) {
     if (guildId && restoredData.guilds && restoredData.guilds[guildId]) {
       const currentConfig = await readConfig();
       currentConfig.guilds[guildId] = restoredData.guilds[guildId];
-      await writeConfig(currentConfig);
+      await writeConfig(currentConfig, "restore");
       
       console.log(`[Restore] Restauration partielle réussie pour le serveur ${guildId} depuis: ${filename}`);
       
@@ -330,7 +452,7 @@ async function restoreFromBackupFile(filename, guildId = null) {
       };
     } else {
       // Restauration globale (tous les serveurs)
-      await writeConfig(restoredData);
+      await writeConfig(restoredData, "restore");
       
       console.log(`[Restore] Restauration globale réussie depuis: ${filename}`);
       
