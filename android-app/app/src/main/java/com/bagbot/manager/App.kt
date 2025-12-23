@@ -97,7 +97,7 @@ val configGroups = listOf(
         "👮 Modération & Sécurité",
         Icons.Default.Security,
         Color(0xFFE53935),
-        listOf("logs", "autokick", "inactivity", "staffRoleIds", "quarantineRoleId")
+        listOf("logs", "autokick", "inactivity", "staffRoleIds", "quarantineRoleId", "tribunal")
     ),
     ConfigGroup(
         "gamification",
@@ -3515,6 +3515,28 @@ fun renderKeyInfo(
                     keyInfos.add("🔒 Rôle quarantaine" to "${roles[roleId] ?: "Inconnu"} ($roleId)")
                 }
             }
+            "tribunal" -> {
+                val obj = sectionData.jsonObject
+                val enabled = obj["enabled"]?.jsonPrimitive?.booleanOrNull ?: false
+                val accuseRoleId = obj["accuseRoleId"]?.jsonPrimitive?.contentOrNull
+                val avocatRoleId = obj["avocatRoleId"]?.jsonPrimitive?.contentOrNull
+                val jugeRoleId = obj["jugeRoleId"]?.jsonPrimitive?.contentOrNull
+                val categoryId = obj["categoryId"]?.jsonPrimitive?.contentOrNull
+                
+                keyInfos.add("⚖️ Système activé" to if (enabled) "✅ Oui" else "❌ Non")
+                if (accuseRoleId != null) {
+                    keyInfos.add("⚖️ Rôle Accusé" to "${roles[accuseRoleId] ?: "Inconnu"} ($accuseRoleId)")
+                }
+                if (avocatRoleId != null) {
+                    keyInfos.add("👔 Rôle Avocat" to "${roles[avocatRoleId] ?: "Inconnu"} ($avocatRoleId)")
+                }
+                if (jugeRoleId != null) {
+                    keyInfos.add("👨‍⚖️ Rôle Juge" to "${roles[jugeRoleId] ?: "Inconnu"} ($jugeRoleId)")
+                }
+                if (categoryId != null) {
+                    keyInfos.add("📁 Catégorie Tribunaux" to "${channels[categoryId] ?: "Inconnue"} ($categoryId)")
+                }
+            }
             "inactivity" -> {
                 val obj = sectionData.jsonObject
                 obj["kickAfterDays"]?.jsonPrimitive?.intOrNull?.let { days ->
@@ -3755,6 +3777,7 @@ fun getSectionDisplayName(key: String): String {
         "geo" -> "🌍 Géolocalisation"
         "quarantineRoleId" -> "🔒 Rôle quarantaine"
         "staffRoleIds" -> "👮 Rôles staff"
+        "tribunal" -> "⚖️ Tribunal"
         "truthdare" -> "🎲 Action ou vérité"
         else -> "⚙️ $key"
     }

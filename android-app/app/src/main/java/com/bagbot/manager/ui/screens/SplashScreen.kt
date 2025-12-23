@@ -56,12 +56,13 @@ fun SplashScreen(onFinished: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Logo vectoriel personnalisé
+            // Logo personnalisé
             Image(
-                painter = painterResource(id = R.drawable.ic_bag_logo),
+                painter = painterResource(id = R.drawable.splash_image),
                 contentDescription = "BAG Logo",
                 modifier = Modifier
-                    .size(150.dp)
+                    .size(200.dp)
+                    .clip(CircleShape)
                     .scale(scale)
             )
             
