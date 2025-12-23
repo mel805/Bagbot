@@ -48,6 +48,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
+import com.bagbot.manager.StaffChatNotificationWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -522,16 +523,17 @@ fun createNotificationChannel(context: Context) {
 }
 
 // Fonction pour envoyer une notification
-fun sendStaffChatNotification(context: Context, senderName: String, message: String) {
+fun sendStaffChatNotification(context: Context, senderName: String, message: String, isMention: Boolean = false) {
     try {
         val notificationId = System.currentTimeMillis().toInt()
         val channelId = "staff_chat_channel"
         
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_email)
-            .setContentTitle("💬 Chat Staff - $senderName")
+            .setContentTitle(if (isMention) "🔔 Mention - $senderName" else "💬 Chat Staff - $senderName")
             .setContentText(message)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(if (isMention) NotificationCompat.PRIORITY_MAX else NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setDefaults(NotificationCompat.DEFAULT_ALL)
         
@@ -596,13 +598,25 @@ fun StaffChatScreen(
                         // Vérifier s'il y a de nouveaux messages
                         if (newMessages.size > previousMessageCount && previousMessageCount > 0) {
                             // Nouveau message détecté, envoyer une notification
-                            val latestMessage = newMessages.firstOrNull()
+                            val latestMessage = newMessages.lastOrNull()
                             if (latestMessage != null) {
                                 val currentUserId = userInfo?.get("id").safeStringOrEmpty()
                                 // Ne pas notifier pour ses propres messages
                                 if (latestMessage.userId != currentUserId) {
                                     val senderName = members[latestMessage.userId] ?: latestMessage.username
-                                    sendStaffChatNotification(context, senderName, latestMessage.message)
+                                    val isMention = run {
+                                        val msg = latestMessage.message.lowercase()
+                                        if (msg.contains("@everyone") || msg.contains("@here")) return@run true
+                                        val u = (userInfo?.get("username").safeString() ?: "").trim()
+                                        if (u.isBlank()) return@run false
+                                        msg.contains("@${u.lowercase()}")
+                                    }
+                                    sendStaffChatNotification(
+                                        context = context,
+                                        senderName = senderName,
+                                        message = latestMessage.message,
+                                        isMention = isMention
+                                    )
                                 }
                             }
                         }
@@ -1170,6 +1184,13 @@ fun App(deepLink: Uri?, onDeepLinkConsumed: () -> Unit) {
     // Chargement des données
     LaunchedEffect(token, baseUrl) {
         if (token.isNullOrBlank() || baseUrl.isNullOrBlank()) return@LaunchedEffect
+
+        // Notifications staff (en arrière-plan via WorkManager)
+        try {
+            StaffChatNotificationWorker.schedule(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not schedule staff notifications: ${e.message}")
+        }
         
         isLoading = true
         errorMessage = null
