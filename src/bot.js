@@ -5909,6 +5909,17 @@ client.once(Events.ClientReady, async (readyClient) => {
     console.error('[Bot] ❌ Erreur démarrage backup horaire:', error.message);
   }
 
+  // === SYSTÈME DE MONITORING DE SANTÉ DES DONNÉES ===
+  try {
+    const DataHealthMonitor = require('./utils/dataHealthMonitor');
+    global.dataHealthMonitor = new DataHealthMonitor(client);
+    // Démarrer le monitoring (il peut être configuré avec un channel d'alerte via /health ou config)
+    global.dataHealthMonitor.start();
+    console.log('[Bot] ✅ Système de monitoring de santé démarré (vérification toutes les 10 minutes)');
+  } catch (error) {
+    console.error('[Bot] ❌ Erreur initialisation monitoring:', error.message);
+  }
+
   // === NETTOYAGE AUTOMATIQUE DES UTILISATEURS PARTIS ===
   // Nettoyer tous les jours à 3h du matin
   const scheduleDailyCleanup = () => {
@@ -12801,16 +12812,15 @@ client.on(Events.MessageCreate, async (message) => {
 
     // ========== HANDLER MOT-CACHÉ (lettres aléatoires) ==========
     // IMPORTANT: Doit être AVANT le check des levels pour ne pas être bloqué
-    console.log('[DEBUG] Avant appel mot-cache handler');
     try {
       const motCacheHandler = require('./modules/mot-cache-handler');
-      console.log('[DEBUG] Handler chargé, appel handleMessage...');
       await motCacheHandler.handleMessage(message);
-      console.log('[DEBUG] handleMessage terminé');
     } catch (err) {
-      // Log all errors for debugging
-      console.error('[MOT-CACHE] Error in message handler:', err);
-      console.error('[MOT-CACHE] Error stack:', err.stack);
+      // Silent fail pour ne pas bloquer le traitement des messages
+      // Log uniquement les vraies erreurs, pas les modules manquants
+      if (err.message && !err.message.includes('Cannot find module')) {
+        console.error('[MOT-CACHE] Error in message handler:', err.message);
+      }
     }
 
     const levels = await getLevelsConfig(message.guild.id);
