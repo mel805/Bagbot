@@ -27,6 +27,55 @@ function setDataDir(dir) {
   CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 }
 
+// ============================================================================
+// Inter-process write lock for config.json
+//
+// Why: bagbot + bot-api (separate PM2 processes) can both call writeConfig().
+// Without a shared lock, concurrent writes may interleave and corrupt config.json,
+// especially on filesystems where atomic rename can fail and we fall back to
+// direct writeFile().
+// ============================================================================
+function getWriteLockPath() {
+  return path.join(DATA_DIR, 'config.write.lock');
+}
+
+async function acquireWriteLock({ timeoutMs = 12_000, staleMs = 2 * 60_000 } = {}) {
+  const lockPath = getWriteLockPath();
+  const start = Date.now();
+  // Ensure directory exists for lock file
+  try { await fsp.mkdir(DATA_DIR, { recursive: true }); } catch (_) {}
+
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const fh = await fsp.open(lockPath, 'wx');
+      try {
+        const payload = JSON.stringify({ pid: process.pid, at: Date.now() });
+        await fh.writeFile(payload, 'utf8').catch(() => {});
+      } catch (_) {}
+      return { fh, lockPath };
+    } catch (e) {
+      // If lock exists, check for staleness (process crashed, etc.)
+      try {
+        const st = await fsp.stat(lockPath);
+        if (Date.now() - st.mtimeMs > staleMs) {
+          await fsp.unlink(lockPath).catch(() => {});
+          continue;
+        }
+      } catch (_) {}
+      // Backoff with small jitter
+      const delay = 120 + Math.floor(Math.random() * 180);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error(`Timeout acquiring config write lock (${timeoutMs}ms)`);
+}
+
+async function releaseWriteLock(lock) {
+  if (!lock) return;
+  try { await lock.fh?.close?.(); } catch (_) {}
+  try { await fsp.unlink(lock.lockPath).catch(() => {}); } catch (_) {}
+}
+
 function unwrapBackupData(backupData) {
   // Format 1: { data, metadata }
   if (backupData && typeof backupData === 'object' && backupData.data && backupData.metadata) return backupData.data;
@@ -219,9 +268,15 @@ async function readConfig() {
         throw new Error('config.json corrompu et aucun backup disponible');
       }
       const restored = await loadConfigFromFile(latest);
-      const tmp = CONFIG_PATH + '.tmp';
-      await fsp.writeFile(tmp, JSON.stringify(restored, null, 2), 'utf8');
-      try { await fsp.rename(tmp, CONFIG_PATH); } catch (_) { await fsp.writeFile(CONFIG_PATH, JSON.stringify(restored, null, 2), 'utf8'); }
+      const lock = await acquireWriteLock().catch(() => null);
+      try {
+        const tmp = CONFIG_PATH + '.tmp';
+        await fsp.writeFile(tmp, JSON.stringify(restored, null, 2), 'utf8');
+        try { await fsp.rename(tmp, CONFIG_PATH); }
+        catch (_) { await fsp.writeFile(CONFIG_PATH, JSON.stringify(restored, null, 2), 'utf8'); }
+      } finally {
+        await releaseWriteLock(lock);
+      }
       console.warn('[storage] config.json restauré automatiquement depuis:', latest);
       return restored;
     } catch (restoreErr) {
@@ -233,6 +288,10 @@ async function readConfig() {
 
 async function writeConfig(cfg, updateType = "unknown") {
   await ensureStorageExists();
+  const lock = await acquireWriteLock().catch((e) => {
+    try { console.error('[storage] ❌ Impossible d\'acquérir le lock d\'écriture:', e?.message || e); } catch (_) {}
+    throw e;
+  });
   
   // 🛡️ PROTECTION ANTI-CORRUPTION
   let prevSnapshot = null;
@@ -275,21 +334,26 @@ async function writeConfig(cfg, updateType = "unknown") {
   if (!validation.valid) {
     console.error('[Protection] ❌ REFUS D ÉCRITURE: Config invalide -', validation.reason);
     console.error('[Protection] 🔄 Le config actuel reste intact');
+    await releaseWriteLock(lock);
     throw new Error(`Protection anti-corruption: ${validation.reason}`);
   }
   
   console.log(`[Protection] ✅ Config valide (${validation.totalUsers} utilisateurs)`);
   
   // Sauvegarder le fichier principal config.json (toutes les guilds)
-  try { await fsp.mkdir(DATA_DIR, { recursive: true }); } catch (_) {}
-  const tmpPath = CONFIG_PATH + '.tmp';
-  await fsp.writeFile(tmpPath, JSON.stringify(cfg, null, 2), 'utf8');
   try {
-    await fsp.rename(tmpPath, CONFIG_PATH);
-  } catch (e) {
-    // Sur certains FS (ex: overlay), rename atomique peut échouer: fallback sur write direct
-    try { await fsp.writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8'); }
-    catch (_) {}
+    try { await fsp.mkdir(DATA_DIR, { recursive: true }); } catch (_) {}
+    const tmpPath = CONFIG_PATH + '.tmp';
+    await fsp.writeFile(tmpPath, JSON.stringify(cfg, null, 2), 'utf8');
+    try {
+      await fsp.rename(tmpPath, CONFIG_PATH);
+    } catch (e) {
+      // Sur certains FS (ex: overlay), rename atomique peut échouer: fallback sur write direct
+      try { await fsp.writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2), 'utf8'); }
+      catch (_) {}
+    }
+  } finally {
+    await releaseWriteLock(lock);
   }
   
   // BACKUPS AUTOMATIQUES DÉSACTIVÉS
