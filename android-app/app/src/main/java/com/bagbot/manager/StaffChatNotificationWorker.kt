@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -148,6 +149,24 @@ class StaffChatNotificationWorker(
             Log.d(TAG, "Worker completed successfully (new=$any, lastSeenId=$maxId)")
             
             Result.success()
+        } catch (e: IOException) {
+            // Si le serveur révoque le token (plus admin / token invalide),
+            // on déconnecte et on stoppe le worker.
+            val msg = e.message ?: ""
+            if (msg.contains("HTTP 401") || msg.contains("HTTP 403") || msg.contains("NOT_ADMIN")) {
+                try {
+                    SettingsStore.init(applicationContext)
+                    val store = SettingsStore.getInstance()
+                    store.clearToken()
+                } catch (_: Exception) {}
+                try {
+                    androidx.work.WorkManager.getInstance(applicationContext).cancelUniqueWork(UNIQUE_PERIODIC_NAME)
+                    androidx.work.WorkManager.getInstance(applicationContext).cancelUniqueWork(UNIQUE_ONCE_NAME)
+                } catch (_: Exception) {}
+                return@withContext Result.success()
+            }
+            Log.e(TAG, "Worker IO error: ${e.message}", e)
+            Result.retry()
         } catch (e: Exception) {
             Log.e(TAG, "Worker error: ${e.message}", e)
             Result.retry()

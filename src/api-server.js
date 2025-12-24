@@ -5,8 +5,10 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const fsp = fs.promises;
 const multer = require('multer');
 const listLocalBackups = require('./helpers/listLocalBackups');
+const crypto = require('crypto');
 
 // Importer les fonctions du bot
 const { 
@@ -40,30 +42,121 @@ const FOUNDER_ID = process.env.FOUNDER_ID || '943487722738311219';
 // Token storage (simplifié - en production utiliser une vraie DB)
 const appTokens = new Map();
 
+// Permissions cache to avoid hitting Discord API on every request
+const permissionsCache = new Map(); // userId -> { data, checkedAt }
+const PERMISSIONS_CACHE_TTL_MS = 2 * 60 * 1000;
+
+function base64UrlEncode(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
+}
+
+function base64UrlDecodeToString(input) {
+  const pad = input.length % 4 ? '='.repeat(4 - (input.length % 4)) : '';
+  const b64 = (input + pad).replace(/-/g, '+').replace(/_/g, '/');
+  return Buffer.from(b64, 'base64').toString('utf8');
+}
+
+async function loadOrCreateAppTokenSecret() {
+  const env = process.env.APP_TOKEN_SECRET;
+  if (env && String(env).trim().length >= 16) return String(env).trim();
+
+  const dataDir = path.join(__dirname, '../data');
+  const secretPath = path.join(dataDir, 'app-token-secret.txt');
+  await fsp.mkdir(dataDir, { recursive: true }).catch(() => {});
+
+  try {
+    const existing = await fsp.readFile(secretPath, 'utf8');
+    const s = String(existing || '').trim();
+    if (s.length >= 16) return s;
+  } catch (_) {}
+
+  const secret = base64UrlEncode(crypto.randomBytes(48));
+  try {
+    await fsp.writeFile(secretPath, secret + '\n', { encoding: 'utf8', mode: 0o600 });
+  } catch (_) {}
+  return secret;
+}
+
+let APP_TOKEN_SECRET_PROMISE = null;
+function getAppTokenSecret() {
+  if (!APP_TOKEN_SECRET_PROMISE) APP_TOKEN_SECRET_PROMISE = loadOrCreateAppTokenSecret();
+  return APP_TOKEN_SECRET_PROMISE;
+}
+
+async function issueAppToken(payload) {
+  const secret = await getAppTokenSecret();
+  const header = { alg: 'HS256', typ: 'JWT' };
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expSec = nowSec + (90 * 24 * 60 * 60); // 90 jours
+  const body = { ...payload, iat: nowSec, exp: expSec };
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedBody = base64UrlEncode(JSON.stringify(body));
+  const data = `${encodedHeader}.${encodedBody}`;
+  const sig = crypto.createHmac('sha256', secret).update(data).digest('base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  return `${data}.${sig}`;
+}
+
+async function verifyAppToken(token) {
+  const secret = await getAppTokenSecret();
+  const parts = String(token || '').split('.');
+  if (parts.length !== 3) return null;
+  const [h, p, s] = parts;
+  const data = `${h}.${p}`;
+  const expected = crypto.createHmac('sha256', secret).update(data).digest('base64')
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
+  if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(String(s)))) return null;
+  let payload = null;
+  try { payload = JSON.parse(base64UrlDecodeToString(p)); } catch (_) { return null; }
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!payload || typeof payload !== 'object') return null;
+  if (typeof payload.exp !== 'number' || payload.exp <= nowSec) return null;
+  return payload;
+}
+
 // ========== AUTHENTIFICATION ==========
 
 // Fonction pour vérifier si un utilisateur est admin/fondateur
 async function checkUserPermissions(userId, client) {
   try {
     if (userId === FOUNDER_ID) {
-      return { isFounder: true, isAdmin: true };
+      return { isFounder: true, isAdmin: true, username: 'Founder', discriminator: '0', avatar: null };
     }
     
     const guild = client.guilds.cache.get(GUILD);
-    if (!guild) return { isFounder: false, isAdmin: false };
+    if (!guild) return { isFounder: false, isAdmin: false, username: null, discriminator: null, avatar: null };
     
     const member = await guild.members.fetch(userId).catch(() => null);
-    if (!member) return { isFounder: false, isAdmin: false };
+    if (!member) return { isFounder: false, isAdmin: false, username: null, discriminator: null, avatar: null };
     
     const isAdmin = member.permissions.has('Administrator');
-    return { isFounder: false, isAdmin };
+    return {
+      isFounder: false,
+      isAdmin,
+      username: member.user?.username || null,
+      discriminator: member.user?.discriminator || null,
+      avatar: member.user?.avatar || null,
+    };
   } catch (error) {
     console.error('[API] Error checking permissions:', error);
-    return { isFounder: false, isAdmin: false };
+    return { isFounder: false, isAdmin: false, username: null, discriminator: null, avatar: null };
   }
 }
 
-// Middleware d'authentification avec persistance améliorée
+async function getCachedPermissions(userId, client) {
+  const key = String(userId);
+  const cached = permissionsCache.get(key);
+  if (cached && (Date.now() - cached.checkedAt) < PERMISSIONS_CACHE_TTL_MS) return cached.data;
+  const data = await checkUserPermissions(key, client);
+  permissionsCache.set(key, { data, checkedAt: Date.now() });
+  return data;
+}
+
+// Middleware d'authentification (token persistant + vérification admin en temps réel)
 async function requireAuth(req, res, next) {
   const authHeader = req.headers['authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -71,42 +164,38 @@ async function requireAuth(req, res, next) {
   }
   
   const token = authHeader.substring(7);
-  const userData = appTokens.get('token_' + token);
-  
-  if (!userData) {
+  const payload = await verifyAppToken(token);
+  if (!payload || !payload.userId) {
     return res.status(401).json({ error: 'Invalid token' });
   }
-  
-  // Vérifier les permissions en temps réel (admin retiré = déconnexion automatique)
+
+  const userId = String(payload.userId);
   const client = req.app.locals.client;
-  if (client) {
-    try {
-      const permissions = await checkUserPermissions(userData.userId, client);
-      
-      // Si l'utilisateur n'est plus admin/fondateur, invalider le token
-      if (!permissions.isAdmin && !permissions.isFounder) {
-        appTokens.delete('token_' + token);
-        return res.status(401).json({ 
-          error: 'Access revoked',
-          message: 'Votre accès a été révoqué. Veuillez vous reconnecter.'
-        });
-      }
-      
-      // Mettre à jour les permissions dans userData
-      userData.isAdmin = permissions.isAdmin;
-      userData.isFounder = permissions.isFounder;
-    } catch (error) {
-      console.error('[API] Error checking permissions:', error);
-    }
+
+  if (!client) {
+    return res.status(503).json({ error: 'Discord client unavailable' });
   }
-  
-  // Mettre à jour le timestamp pour garder la session active
-  userData.timestamp = Date.now();
-  
-  // Plus d'expiration de token - seule la révocation du rôle admin déconnecte
-  // (Anciennement: expiration après 24h)
-  
-  req.userData = userData;
+
+  const permissions = await getCachedPermissions(userId, client);
+
+  // Si l'utilisateur n'est plus admin/fondateur => accès révoqué (app doit vider le token)
+  if (!permissions.isAdmin && !permissions.isFounder) {
+    return res.status(401).json({
+      error: 'NOT_ADMIN',
+      message: 'Votre accès a été révoqué (vous n’êtes plus admin).',
+    });
+  }
+
+  req.userData = {
+    userId,
+    username: permissions.username || payload.username || 'User',
+    discriminator: permissions.discriminator || payload.discriminator || '0',
+    avatar: permissions.avatar || payload.avatar || null,
+    isFounder: Boolean(permissions.isFounder),
+    isAdmin: Boolean(permissions.isAdmin),
+    timestamp: Date.now(),
+  };
+
   next();
 }
 
@@ -243,15 +332,11 @@ app.get('/auth/mobile/callback', async (req, res) => {
     }
     
     // Créer token app
-    const appToken = generateToken();
-    appTokens.set('token_' + appToken, {
+    const appToken = await issueAppToken({
       userId: userData.id,
       username: userData.username,
       discriminator: userData.discriminator,
       avatar: userData.avatar,
-      isFounder: permissions.isFounder,
-      isAdmin: permissions.isAdmin,
-      timestamp: Date.now()
     });
     
     console.log(`[BOT-API] User authenticated: ${userData.username} (${userData.id})`);
@@ -280,19 +365,8 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 // DEBUG: Liste des tokens actifs (temporaire)
 app.get('/api/debug/tokens', (req, res) => {
-  const tokens = [];
-  for (const [key, data] of appTokens.entries()) {
-    if (key.startsWith('token_')) {
-      tokens.push({
-        username: data.username,
-        userId: data.userId,
-        age: Math.floor((Date.now() - data.timestamp) / 1000) + 's',
-        isFounder: data.isFounder,
-        isAdmin: data.isAdmin
-      });
-    }
-  }
-  res.json({ count: tokens.length, tokens });
+  // Les tokens sont désormais stateless (signés), donc rien à lister côté serveur.
+  res.json({ count: 0, tokens: [] });
 });
 
 // Login endpoint (temporaire - nécessite Discord OAuth pour production)
@@ -311,16 +385,19 @@ app.post('/auth/login', async (req, res) => {
   }
   
   // Créer token
-  const token = Buffer.from(`${userId}-${Date.now()}`).toString('base64');
+  const token = await issueAppToken({
+    userId,
+    username: username || permissions.username || 'User',
+    discriminator: permissions.discriminator || '0',
+    avatar: permissions.avatar || null,
+  });
   const userData = {
     userId,
-    username: username || 'User',
+    username: username || permissions.username || 'User',
     timestamp: Date.now(),
     isFounder: permissions.isFounder,
     isAdmin: permissions.isAdmin
   };
-  
-  appTokens.set('token_' + token, userData);
   
   res.json({ 
     success: true, 
