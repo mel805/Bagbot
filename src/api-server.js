@@ -1901,13 +1901,15 @@ app.post('/api/actions/gifs', requireAuth, express.json(), async (req, res) => {
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
     if (!config.guilds[GUILD].economy) config.guilds[GUILD].economy = {};
     if (!config.guilds[GUILD].economy.actions) config.guilds[GUILD].economy.actions = {};
+    if (!config.guilds[GUILD].economy.actions.gifs || typeof config.guilds[GUILD].economy.actions.gifs !== 'object') {
+      config.guilds[GUILD].economy.actions.gifs = {};
+    }
     
     // Merger les GIFs
     for (const [action, gifs] of Object.entries(req.body)) {
-      if (!config.guilds[GUILD].economy.actions[action]) {
-        config.guilds[GUILD].economy.actions[action] = {};
-      }
-      config.guilds[GUILD].economy.actions[action].gifs = gifs;
+      if (!action) continue;
+      const safe = (gifs && typeof gifs === 'object') ? gifs : { success: [], fail: [] };
+      config.guilds[GUILD].economy.actions.gifs[action] = safe;
     }
     
     await writeConfig(config);
@@ -1925,17 +1927,72 @@ app.post('/api/actions/messages', requireAuth, express.json(), async (req, res) 
     if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
     if (!config.guilds[GUILD].economy) config.guilds[GUILD].economy = {};
     if (!config.guilds[GUILD].economy.actions) config.guilds[GUILD].economy.actions = {};
+    if (!config.guilds[GUILD].economy.actions.messages || typeof config.guilds[GUILD].economy.actions.messages !== 'object') {
+      config.guilds[GUILD].economy.actions.messages = {};
+    }
     
-    // Merger les messages
+    // Merger les messages (support zones)
     for (const [action, messages] of Object.entries(req.body)) {
-      if (!config.guilds[GUILD].economy.actions[action]) {
-        config.guilds[GUILD].economy.actions[action] = {};
+      if (!action) continue;
+      if (!messages || typeof messages !== 'object') continue;
+
+      const existing = (config.guilds[GUILD].economy.actions.messages[action] && typeof config.guilds[GUILD].economy.actions.messages[action] === 'object')
+        ? config.guilds[GUILD].economy.actions.messages[action]
+        : { success: [], fail: [] };
+
+      // Update top-level success/fail if provided
+      if (Array.isArray(messages.success)) existing.success = messages.success;
+      if (Array.isArray(messages.fail)) existing.fail = messages.fail;
+
+      // Update zones if provided
+      if (messages.zones && typeof messages.zones === 'object') {
+        if (!existing.zones || typeof existing.zones !== 'object') existing.zones = {};
+        for (const [zoneKey, zoneMsg] of Object.entries(messages.zones)) {
+          if (!zoneKey) continue;
+          if (!zoneMsg || typeof zoneMsg !== 'object') continue;
+          const z = (existing.zones[zoneKey] && typeof existing.zones[zoneKey] === 'object')
+            ? existing.zones[zoneKey]
+            : { success: [], fail: [] };
+          if (Array.isArray(zoneMsg.success)) z.success = zoneMsg.success;
+          if (Array.isArray(zoneMsg.fail)) z.fail = zoneMsg.fail;
+          existing.zones[zoneKey] = z;
+        }
       }
-      config.guilds[GUILD].economy.actions[action].messages = messages;
+
+      config.guilds[GUILD].economy.actions.messages[action] = existing;
     }
     
     await writeConfig(config);
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/discord/emojis - Liste des emojis du serveur (pour l'app Android)
+app.get('/api/discord/emojis', requireAuth, async (req, res) => {
+  try {
+    const client = req.app.locals.client;
+    if (!client || !client.isReady?.()) {
+      return res.status(503).json({ error: 'Discord client unavailable' });
+    }
+    const guild = client.guilds.cache.get(GUILD);
+    if (!guild) return res.status(404).json({ error: 'Guild not found' });
+
+    const emojis = await guild.emojis.fetch().catch(() => null);
+    const arr = [];
+    if (emojis) {
+      for (const e of emojis.values()) {
+        const id = String(e.id || '');
+        const name = String(e.name || '');
+        const animated = Boolean(e.animated);
+        const url = (typeof e.imageURL === 'function') ? (e.imageURL({ extension: 'png', size: 64 }) || '') : '';
+        const raw = animated ? `<a:${name}:${id}>` : `<:${name}:${id}>`;
+        arr.push({ id, name, animated, url, raw });
+      }
+    }
+    arr.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ emojis: arr });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -1294,6 +1294,30 @@ private fun EconomyConfigTab(
                 
                 // Dialog Add/Edit
                 if (showAddDialog) {
+                    // Server emojis picker state
+                    var showEmojiPicker by remember { mutableStateOf(false) }
+                    var emojiQuery by remember { mutableStateOf("") }
+                    var isLoadingEmojis by remember { mutableStateOf(false) }
+                    var serverEmojis by remember { mutableStateOf<List<JsonObject>>(emptyList()) }
+
+                    fun loadServerEmojis() {
+                        scope.launch {
+                            isLoadingEmojis = true
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val resp = api.getJson("/api/discord/emojis")
+                                    val obj = json.parseToJsonElement(resp).jsonObject
+                                    val list = obj["emojis"]?.jsonArray?.mapNotNull { it.jsonObject } ?: emptyList()
+                                    withContext(Dispatchers.Main) { serverEmojis = list }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Emojis: ${e.message}") }
+                                } finally {
+                                    withContext(Dispatchers.Main) { isLoadingEmojis = false }
+                                }
+                            }
+                        }
+                    }
+
                     AlertDialog(
                         onDismissRequest = { showAddDialog = false },
                         title = { Text(if (editingIndex != null) "Modifier l'objet" else "Ajouter un objet") },
@@ -1309,7 +1333,24 @@ private fun EconomyConfigTab(
                                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
                                 )
                                 Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(newItemEmoji, { newItemEmoji = it }, label = { Text("Emoji") }, modifier = Modifier.fillMaxWidth())
+                                OutlinedTextField(
+                                    newItemEmoji,
+                                    { newItemEmoji = it },
+                                    label = { Text("Emoji (tu peux aussi coller un emoji du clavier)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        showEmojiPicker = true
+                                        if (serverEmojis.isEmpty()) loadServerEmojis()
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Default.EmojiEmotions, null)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Choisir un emoji du serveur")
+                                }
                             }
                         },
                         confirmButton = {
@@ -1336,6 +1377,91 @@ private fun EconomyConfigTab(
                             }
                         }
                     )
+
+                    if (showEmojiPicker) {
+                        AlertDialog(
+                            onDismissRequest = { showEmojiPicker = false },
+                            title = { Text("Emojis du serveur") },
+                            text = {
+                                Column {
+                                    OutlinedTextField(
+                                        value = emojiQuery,
+                                        onValueChange = { emojiQuery = it },
+                                        label = { Text("Rechercher (ou coller un emoji)") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+
+                                    if (isLoadingEmojis) {
+                                        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                            CircularProgressIndicator()
+                                        }
+                                    } else {
+                                        val filtered = remember(serverEmojis, emojiQuery) {
+                                            val q = emojiQuery.trim().lowercase()
+                                            if (q.isBlank()) serverEmojis
+                                            else serverEmojis.filter {
+                                                val name = it["name"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: ""
+                                                val raw = it["raw"]?.jsonPrimitive?.contentOrNull?.lowercase() ?: ""
+                                                name.contains(q) || raw.contains(q)
+                                            }
+                                        }
+
+                                        LazyColumn(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(max = 420.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            itemsIndexed(filtered) { _, e ->
+                                                val name = e["name"]?.jsonPrimitive?.contentOrNull ?: ""
+                                                val raw = e["raw"]?.jsonPrimitive?.contentOrNull ?: ""
+                                                val url = e["url"]?.jsonPrimitive?.contentOrNull ?: ""
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+                                                ) {
+                                                    Row(
+                                                        Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                                    ) {
+                                                        if (url.isNotBlank()) {
+                                                            AsyncImage(
+                                                                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                                                    .data(url)
+                                                                    .crossfade(true)
+                                                                    .build(),
+                                                                contentDescription = name,
+                                                                modifier = Modifier.size(28.dp),
+                                                                contentScale = ContentScale.Fit
+                                                            )
+                                                        } else {
+                                                            Text("🙂")
+                                                        }
+                                                        Column(Modifier.weight(1f)) {
+                                                            Text(":$name:", color = Color.White, fontWeight = FontWeight.SemiBold)
+                                                            Text(raw, color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                                        }
+                                                        Button(onClick = {
+                                                            newItemEmoji = raw
+                                                            showEmojiPicker = false
+                                                        }) { Text("Choisir") }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = { showEmojiPicker = false }) { Text("Fermer") }
+                            }
+                        )
+                    }
                 }
             }
             4 -> {
@@ -2675,11 +2801,25 @@ private fun ActionMessagesTab(
     snackbar: SnackbarHostState
 ) {
     val messagesData = actions?.obj("messages")?.obj(selectedActionKey)
-    val successMessages = remember(messagesData, selectedActionKey) {
-        messagesData?.arr("success").safeStringList().toMutableStateList()
+    val zonesFromConfig = remember(actions, selectedActionKey) {
+        val cfg = actions?.obj("config")?.obj(selectedActionKey)
+        cfg?.arr("zones").safeStringList().distinct()
     }
-    val failMessages = remember(messagesData, selectedActionKey) {
-        messagesData?.arr("fail").safeStringList().toMutableStateList()
+    val zoneOptions = remember(zonesFromConfig) { listOf("__global__") + zonesFromConfig }
+    var selectedZone by remember(selectedActionKey) { mutableStateOf("__global__") }
+
+    val zoneMessagesData = remember(messagesData, selectedZone, selectedActionKey) {
+        if (selectedZone == "__global__") {
+            messagesData
+        } else {
+            messagesData?.obj("zones")?.obj(selectedZone)
+        }
+    }
+    val successMessages = remember(zoneMessagesData, selectedZone, selectedActionKey) {
+        zoneMessagesData?.arr("success").safeStringList().toMutableStateList()
+    }
+    val failMessages = remember(zoneMessagesData, selectedZone, selectedActionKey) {
+        zoneMessagesData?.arr("fail").safeStringList().toMutableStateList()
     }
     
     var showAddSuccess by remember { mutableStateOf(false) }
@@ -2727,6 +2867,55 @@ private fun ActionMessagesTab(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Zone selector (si action configurée avec des zones)
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
+            ) {
+                Column(Modifier.padding(16.dp)) {
+                    Text("Zone des messages", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(
+                            onClick = { expanded = true },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            val label = if (selectedZone == "__global__") "🌐 Global (sans zone)" else "📍 $selectedZone"
+                            Text(label, modifier = Modifier.weight(1f))
+                            Icon(if (expanded) Icons.Default.ArrowDropUp else Icons.Default.ArrowDropDown, null)
+                        }
+                        androidx.compose.material3.DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth(0.9f)
+                        ) {
+                            zoneOptions.forEach { z ->
+                                val label = if (z == "__global__") "🌐 Global (sans zone)" else "📍 $z"
+                                androidx.compose.material3.DropdownMenuItem(
+                                    text = { Text(label) },
+                                    onClick = {
+                                        selectedZone = z
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        if (selectedZone == "__global__") "Ces messages s'appliquent à toutes les zones."
+                        else "Ces messages s'appliquent quand la commande choisit la zone \"$selectedZone\".",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
                 }
             }
         }
@@ -2931,8 +3120,17 @@ private fun ActionMessagesTab(
                             try {
                                 val body = buildJsonObject {
                                     put(selectedActionKey, buildJsonObject {
-                                        put("success", JsonArray(successMessages.map { JsonPrimitive(it) }))
-                                        put("fail", JsonArray(failMessages.map { JsonPrimitive(it) }))
+                                        if (selectedZone == "__global__") {
+                                            put("success", JsonArray(successMessages.map { JsonPrimitive(it) }))
+                                            put("fail", JsonArray(failMessages.map { JsonPrimitive(it) }))
+                                        } else {
+                                            put("zones", buildJsonObject {
+                                                put(selectedZone, buildJsonObject {
+                                                    put("success", JsonArray(successMessages.map { JsonPrimitive(it) }))
+                                                    put("fail", JsonArray(failMessages.map { JsonPrimitive(it) }))
+                                                })
+                                            })
+                                        }
                                     })
                                 }
                                 api.postJson("/api/actions/messages", json.encodeToString(JsonObject.serializer(), body))
