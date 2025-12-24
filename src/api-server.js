@@ -466,24 +466,19 @@ app.get('/api/configs', async (req, res) => {
     const config = await readConfig();
     const guildConfig = config.guilds[GUILD] || {};
     
-    // Filtrer pour ne garder que les membres actuels du serveur (avec timeout)
+    // Filtrer pour ne garder que les membres actuels du serveur
+    // IMPORTANT: ne pas faire de guild.members.fetch() ici (trop lourd, peut provoquer des crashs/timeout).
     try {
       const guild = req.app.locals.client.guilds.cache.get(GUILD);
       if (guild) {
-        // Fetch avec timeout de 3 secondes
-        await Promise.race([
-          guild.members.fetch(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 3000))
-        ]);
-        
-        const currentMemberIds = guild.members.cache.map(m => m.id);
-        console.log(`[API] Filtrage avec ${currentMemberIds.length} membres actuels`);
+        const currentMemberIds = new Set(guild.members.cache.map(m => m.id));
+        console.log(`[API] Filtrage avec ${currentMemberIds.size} membres (cache Discord)`);
         
         // Filtrer économie
         if (guildConfig.economy && guildConfig.economy.balances) {
           const filtered = {};
           for (const [uid, data] of Object.entries(guildConfig.economy.balances)) {
-            if (currentMemberIds.includes(uid)) filtered[uid] = data;
+            if (currentMemberIds.has(uid)) filtered[uid] = data;
           }
           guildConfig.economy.balances = filtered;
         }
@@ -492,9 +487,18 @@ app.get('/api/configs', async (req, res) => {
         if (guildConfig.levels && guildConfig.levels.users) {
           const filtered = {};
           for (const [uid, data] of Object.entries(guildConfig.levels.users)) {
-            if (currentMemberIds.includes(uid)) filtered[uid] = data;
+            if (currentMemberIds.has(uid)) filtered[uid] = data;
           }
           guildConfig.levels.users = filtered;
+        }
+
+        // Compat: certains schémas utilisent levels.data
+        if (guildConfig.levels && guildConfig.levels.data) {
+          const filtered = {};
+          for (const [uid, data] of Object.entries(guildConfig.levels.data)) {
+            if (currentMemberIds.has(uid)) filtered[uid] = data;
+          }
+          guildConfig.levels.data = filtered;
         }
       }
     } catch (filterError) {
@@ -1964,6 +1968,97 @@ app.post('/api/actions/messages', requireAuth, express.json(), async (req, res) 
     
     await writeConfig(config);
     res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/actions/zones?actionKey=... - Récupérer les zones d'une action
+app.get('/api/actions/zones', requireAuth, async (req, res) => {
+  try {
+    const actionKey = String(req.query.actionKey || '').trim();
+    if (!actionKey) return res.status(400).json({ error: 'actionKey required' });
+
+    const config = await readConfig();
+    const eco = config.guilds?.[GUILD]?.economy || {};
+    const zones = eco.actions?.config?.[actionKey]?.zones;
+    const list = Array.isArray(zones) ? zones.filter(Boolean).map(String) : [];
+
+    res.json({ actionKey, zones: list });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/actions/zones - Ajouter / Renommer / Supprimer une zone
+app.post('/api/actions/zones', requireAuth, express.json(), async (req, res) => {
+  try {
+    const actionKey = String(req.body?.actionKey || '').trim();
+    const op = String(req.body?.op || '').trim(); // add|rename|delete
+
+    if (!actionKey) return res.status(400).json({ error: 'actionKey required' });
+    if (!op) return res.status(400).json({ error: 'op required' });
+
+    const config = await readConfig();
+    if (!config.guilds) config.guilds = {};
+    if (!config.guilds[GUILD]) config.guilds[GUILD] = {};
+    if (!config.guilds[GUILD].economy) config.guilds[GUILD].economy = {};
+    const eco = config.guilds[GUILD].economy;
+    if (!eco.actions) eco.actions = {};
+    if (!eco.actions.config || typeof eco.actions.config !== 'object') eco.actions.config = {};
+    if (!eco.actions.config[actionKey] || typeof eco.actions.config[actionKey] !== 'object') eco.actions.config[actionKey] = {};
+    if (!Array.isArray(eco.actions.config[actionKey].zones)) eco.actions.config[actionKey].zones = [];
+
+    if (!eco.actions.messages || typeof eco.actions.messages !== 'object') eco.actions.messages = {};
+    if (!eco.actions.messages[actionKey] || typeof eco.actions.messages[actionKey] !== 'object') {
+      eco.actions.messages[actionKey] = { success: [], fail: [] };
+    }
+    if (!eco.actions.messages[actionKey].zones || typeof eco.actions.messages[actionKey].zones !== 'object') {
+      eco.actions.messages[actionKey].zones = {};
+    }
+
+    const zones = eco.actions.config[actionKey].zones;
+    const msgZones = eco.actions.messages[actionKey].zones;
+
+    if (op === 'add') {
+      const zone = String(req.body?.zone || '').trim();
+      if (!zone) return res.status(400).json({ error: 'zone required' });
+      if (!zones.includes(zone)) zones.push(zone);
+    } else if (op === 'rename') {
+      const from = String(req.body?.from || '').trim();
+      const to = String(req.body?.to || '').trim();
+      if (!from || !to) return res.status(400).json({ error: 'from/to required' });
+      eco.actions.config[actionKey].zones = zones.map((z) => (z === from ? to : z));
+
+      // migrate messages zones
+      if (msgZones && msgZones[from]) {
+        if (!msgZones[to]) {
+          msgZones[to] = msgZones[from];
+        } else {
+          const a = msgZones[to] || {};
+          const b = msgZones[from] || {};
+          a.success = Array.isArray(a.success) ? a.success : [];
+          a.fail = Array.isArray(a.fail) ? a.fail : [];
+          const bSucc = Array.isArray(b.success) ? b.success : [];
+          const bFail = Array.isArray(b.fail) ? b.fail : [];
+          a.success = Array.from(new Set([...a.success, ...bSucc]));
+          a.fail = Array.from(new Set([...a.fail, ...bFail]));
+          msgZones[to] = a;
+        }
+        try { delete msgZones[from]; } catch (_) {}
+      }
+    } else if (op === 'delete') {
+      const zone = String(req.body?.zone || '').trim();
+      if (!zone) return res.status(400).json({ error: 'zone required' });
+      eco.actions.config[actionKey].zones = zones.filter((z) => z !== zone);
+      try { delete msgZones[zone]; } catch (_) {}
+    } else {
+      return res.status(400).json({ error: 'invalid op' });
+    }
+
+    await writeConfig(config);
+    const out = Array.isArray(eco.actions.config[actionKey].zones) ? eco.actions.config[actionKey].zones : [];
+    res.json({ success: true, actionKey, zones: out });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

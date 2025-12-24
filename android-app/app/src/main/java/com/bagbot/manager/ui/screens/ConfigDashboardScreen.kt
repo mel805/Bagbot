@@ -1195,6 +1195,14 @@ private fun EconomyConfigTab(
                             val name = item["name"]?.jsonPrimitive?.contentOrNull ?: ""
                             val itemId = item["id"]?.jsonPrimitive?.contentOrNull ?: ""
                             val price = item["price"]?.jsonPrimitive?.intOrNull ?: 0
+                            val emojiUrl = remember(emoji) {
+                                val m = Regex("^<a?:([A-Za-z0-9_]+):(\\d+)>$").find(emoji.trim())
+                                if (m != null) {
+                                    val id = m.groupValues[2]
+                                    val animated = emoji.trim().startsWith("<a:")
+                                    "https://cdn.discordapp.com/emojis/$id.${if (animated) "gif" else "png"}?size=64"
+                                } else null
+                            }
                             
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1210,7 +1218,21 @@ private fun EconomyConfigTab(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Text(emoji, style = MaterialTheme.typography.headlineMedium)
+                                        if (emojiUrl != null) {
+                                            AsyncImage(
+                                                model = coil.request.ImageRequest.Builder(LocalContext.current)
+                                                    .data(emojiUrl)
+                                                    .crossfade(true)
+                                                    .build(),
+                                                contentDescription = "Emoji $name",
+                                                modifier = Modifier.size(34.dp),
+                                                contentScale = ContentScale.Fit,
+                                                placeholder = androidx.compose.ui.graphics.painter.ColorPainter(Color.DarkGray),
+                                                error = androidx.compose.ui.graphics.painter.ColorPainter(Color.Red.copy(alpha = 0.3f))
+                                            )
+                                        } else {
+                                            Text(emoji, style = MaterialTheme.typography.headlineMedium)
+                                        }
                                         Column {
                                             Text(name, fontWeight = FontWeight.Bold, color = Color.White)
                                             Text("ID: $itemId", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
@@ -1475,16 +1497,26 @@ private fun EconomyConfigTab(
                 var selectedKarmaTab by remember { mutableIntStateOf(0) }
                 var savingKarma by remember { mutableStateOf(false) }
                 
-                // Pré-calculer toutes les listes AVANT LazyColumn
+                // Editable lists
                 val shopMods = remember(karmaModifiers) {
-                    karmaModifiers?.arr("shop")?.mapNotNull { it.jsonObject } ?: emptyList()
+                    (karmaModifiers?.arr("shop")?.mapNotNull { it.jsonObject } ?: emptyList()).toMutableStateList()
                 }
                 val actionMods = remember(karmaModifiers) {
-                    karmaModifiers?.arr("actions")?.mapNotNull { it.jsonObject } ?: emptyList()
+                    (karmaModifiers?.arr("actions")?.mapNotNull { it.jsonObject } ?: emptyList()).toMutableStateList()
                 }
                 val grants = remember(karmaModifiers) {
-                    karmaModifiers?.arr("grants")?.mapNotNull { it.jsonObject } ?: emptyList()
+                    (karmaModifiers?.arr("grants")?.mapNotNull { it.jsonObject } ?: emptyList()).toMutableStateList()
                 }
+
+                // Dialog state (shared)
+                var showEditDialog by remember { mutableStateOf(false) }
+                var editingType by remember { mutableStateOf("shop") } // shop|actions|grants
+                var editingIndex by remember { mutableStateOf<Int?>(null) }
+                var editName by remember { mutableStateOf("") }
+                var editDescription by remember { mutableStateOf("") }
+                var editCondition by remember { mutableStateOf("") }
+                var editPercent by remember { mutableStateOf("0") }
+                var editMoney by remember { mutableStateOf("0") }
                 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -1530,7 +1562,21 @@ private fun EconomyConfigTab(
                     if (selectedKarmaTab == 0) {
                         item {
                             Text("🛒 Modificateurs Boutique", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${shopMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("${shopMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    editingType = "shop"
+                                    editingIndex = null
+                                    editName = ""
+                                    editDescription = ""
+                                    editCondition = ""
+                                    editPercent = "0"
+                                    editMoney = "0"
+                                    showEditDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("➕ Ajouter un modificateur boutique") }
                         }
                         itemsIndexed(shopMods) { i, m ->
                             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
@@ -1539,6 +1585,25 @@ private fun EconomyConfigTab(
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                                         Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                editingType = "shop"
+                                                editingIndex = i
+                                                editName = m.str("name") ?: ""
+                                                editDescription = m.str("description") ?: ""
+                                                editCondition = m.str("condition") ?: ""
+                                                editPercent = (m.int("percent") ?: 0).toString()
+                                                showEditDialog = true
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("✏️ Modifier") }
+                                        OutlinedButton(
+                                            onClick = { shopMods.removeAt(i) },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("🗑️ Supprimer") }
                                     }
                                 }
                             }
@@ -1549,7 +1614,21 @@ private fun EconomyConfigTab(
                     if (selectedKarmaTab == 1) {
                         item {
                             Text("🎭 Modificateurs Actions", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${actionMods.size} modificateurs configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("${actionMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    editingType = "actions"
+                                    editingIndex = null
+                                    editName = ""
+                                    editDescription = ""
+                                    editCondition = ""
+                                    editPercent = "0"
+                                    editMoney = "0"
+                                    showEditDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("➕ Ajouter un modificateur action") }
                         }
                         itemsIndexed(actionMods) { i, m ->
                             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
@@ -1558,6 +1637,25 @@ private fun EconomyConfigTab(
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                                         Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                editingType = "actions"
+                                                editingIndex = i
+                                                editName = m.str("name") ?: ""
+                                                editDescription = m.str("description") ?: ""
+                                                editCondition = m.str("condition") ?: ""
+                                                editPercent = (m.int("percent") ?: 0).toString()
+                                                showEditDialog = true
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("✏️ Modifier") }
+                                        OutlinedButton(
+                                            onClick = { actionMods.removeAt(i) },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("🗑️ Supprimer") }
                                     }
                                 }
                             }
@@ -1568,7 +1666,21 @@ private fun EconomyConfigTab(
                     if (selectedKarmaTab == 2) {
                         item {
                             Text("🎁 Grants (Bonus seuils)", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${grants.size} grants configurés", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Text("${grants.size} grant(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    editingType = "grants"
+                                    editingIndex = null
+                                    editName = ""
+                                    editDescription = ""
+                                    editCondition = ""
+                                    editMoney = "0"
+                                    editPercent = "0"
+                                    showEditDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) { Text("➕ Ajouter un grant") }
                         }
                         itemsIndexed(grants) { i, g ->
                             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
@@ -1580,12 +1692,31 @@ private fun EconomyConfigTab(
                                         Text("Condition: ${g.str("condition")}", color = Color(0xFF5865F2), style = MaterialTheme.typography.bodySmall)
                                         Text("+${g.int("money") ?: 0} $currencyName", color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
                                     }
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                editingType = "grants"
+                                                editingIndex = i
+                                                editName = g.str("name") ?: ""
+                                                editDescription = g.str("description") ?: ""
+                                                editCondition = g.str("condition") ?: ""
+                                                editMoney = (g.int("money") ?: 0).toString()
+                                                showEditDialog = true
+                                            },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("✏️ Modifier") }
+                                        OutlinedButton(
+                                            onClick = { grants.removeAt(i) },
+                                            modifier = Modifier.weight(1f)
+                                        ) { Text("🗑️ Supprimer") }
+                                    }
                                 }
                             }
                         }
                     }
                     
-                    // Save button (pour le reset uniquement)
+                    // Save button (reset + modifiers)
                     item {
                         Button(
                             onClick = {
@@ -1594,13 +1725,39 @@ private fun EconomyConfigTab(
                                     withContext(Dispatchers.IO) {
                                         try {
                                             val body = buildJsonObject {
+                                                put("karmaModifiers", buildJsonObject {
+                                                    put("shop", JsonArray(shopMods.map { m ->
+                                                        buildJsonObject {
+                                                            put("name", m["name"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            m["description"]?.jsonPrimitive?.contentOrNull?.let { put("description", it) }
+                                                            put("condition", m["condition"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            put("percent", m["percent"]?.jsonPrimitive?.intOrNull ?: 0)
+                                                        }
+                                                    }))
+                                                    put("actions", JsonArray(actionMods.map { m ->
+                                                        buildJsonObject {
+                                                            put("name", m["name"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            m["description"]?.jsonPrimitive?.contentOrNull?.let { put("description", it) }
+                                                            put("condition", m["condition"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            put("percent", m["percent"]?.jsonPrimitive?.intOrNull ?: 0)
+                                                        }
+                                                    }))
+                                                    put("grants", JsonArray(grants.map { g ->
+                                                        buildJsonObject {
+                                                            put("name", g["name"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            g["description"]?.jsonPrimitive?.contentOrNull?.let { put("description", it) }
+                                                            put("condition", g["condition"]?.jsonPrimitive?.contentOrNull ?: "")
+                                                            put("money", g["money"]?.jsonPrimitive?.intOrNull ?: 0)
+                                                        }
+                                                    }))
+                                                })
                                                 put("karmaReset", buildJsonObject {
                                                     put("enabled", resetEnabled)
                                                     put("day", resetDay.toIntOrNull() ?: 1)
                                                 })
                                             }
                                             api.postJson("/api/economy", json.encodeToString(JsonObject.serializer(), body))
-                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Reset Karma sauvegardé") }
+                                            withContext(Dispatchers.Main) { snackbar.showSnackbar("✅ Karma sauvegardé") }
                                         } catch (e: Exception) {
                                             withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Erreur: ${e.message}") }
                                         } finally {
@@ -1616,21 +1773,76 @@ private fun EconomyConfigTab(
                             else {
                                 Icon(Icons.Default.Save, null)
                                 Spacer(Modifier.width(8.dp))
-                                Text("Sauvegarder Reset")
+                                Text("Sauvegarder Karma")
                             }
                         }
                     }
-                    
-                    item {
-                        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E).copy(alpha = 0.5f))) {
-                            Column(Modifier.padding(16.dp)) {
-                                Text("ℹ️ Modificateurs Karma", fontWeight = FontWeight.Bold, color = Color(0xFF5865F2))
+                }
+
+                if (showEditDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showEditDialog = false },
+                        title = {
+                            Text(
+                                when (editingType) {
+                                    "grants" -> if (editingIndex != null) "Modifier un grant" else "Ajouter un grant"
+                                    "actions" -> if (editingIndex != null) "Modifier un modificateur action" else "Ajouter un modificateur action"
+                                    else -> if (editingIndex != null) "Modifier un modificateur boutique" else "Ajouter un modificateur boutique"
+                                }
+                            )
+                        },
+                        text = {
+                            Column {
+                                OutlinedTextField(editName, { editName = it }, label = { Text("Nom") }, modifier = Modifier.fillMaxWidth())
                                 Spacer(Modifier.height(8.dp))
-                                Text("Les modificateurs (Boutique, Actions, Grants) sont consultables ici.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                                Text("Pour les éditer, contactez l'administrateur via le dashboard web ou le bot Discord.", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                OutlinedTextField(editCondition, { editCondition = it }, label = { Text("Condition (ex: charm>=50)") }, modifier = Modifier.fillMaxWidth())
+                                Spacer(Modifier.height(8.dp))
+                                if (editingType == "grants") {
+                                    OutlinedTextField(
+                                        editMoney,
+                                        { editMoney = it },
+                                        label = { Text("Money bonus") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description (optionnel)") }, modifier = Modifier.fillMaxWidth())
+                                } else {
+                                    OutlinedTextField(
+                                        editPercent,
+                                        { editPercent = it },
+                                        label = { Text("Percent (ex: 10 ou -10)") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    OutlinedTextField(editDescription, { editDescription = it }, label = { Text("Description (optionnel)") }, modifier = Modifier.fillMaxWidth())
+                                }
                             }
-                        }
-                    }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val newObj = buildJsonObject {
+                                        put("name", editName.trim())
+                                        put("condition", editCondition.trim())
+                                        if (editDescription.trim().isNotBlank()) put("description", editDescription.trim())
+                                        if (editingType == "grants") put("money", editMoney.toIntOrNull() ?: 0)
+                                        else put("percent", editPercent.toIntOrNull() ?: 0)
+                                    }
+                                    val idx = editingIndex
+                                    when (editingType) {
+                                        "grants" -> if (idx != null) grants[idx] = newObj else grants.add(newObj)
+                                        "actions" -> if (idx != null) actionMods[idx] = newObj else actionMods.add(newObj)
+                                        else -> if (idx != null) shopMods[idx] = newObj else shopMods.add(newObj)
+                                    }
+                                    showEditDialog = false
+                                },
+                                enabled = editName.trim().isNotBlank() && editCondition.trim().isNotBlank()
+                            ) { Text(if (editingIndex != null) "Modifier" else "Ajouter") }
+                        },
+                        dismissButton = { TextButton(onClick = { showEditDialog = false }) { Text("Annuler") } }
+                    )
                 }
             }
             5 -> {
@@ -2801,12 +3013,32 @@ private fun ActionMessagesTab(
     snackbar: SnackbarHostState
 ) {
     val messagesData = actions?.obj("messages")?.obj(selectedActionKey)
-    val zonesFromConfig = remember(actions, selectedActionKey) {
-        val cfg = actions?.obj("config")?.obj(selectedActionKey)
-        cfg?.arr("zones").safeStringList().distinct()
-    }
-    val zoneOptions = remember(zonesFromConfig) { listOf("__global__") + zonesFromConfig }
+    var zones by remember(selectedActionKey) { mutableStateOf<List<String>>(emptyList()) }
+    var zonesLoading by remember(selectedActionKey) { mutableStateOf(false) }
     var selectedZone by remember(selectedActionKey) { mutableStateOf("__global__") }
+
+    fun reloadZones() {
+        if (selectedActionKey.isBlank()) return
+        scope.launch {
+            zonesLoading = true
+            withContext(Dispatchers.IO) {
+                try {
+                    val resp = api.getJson("/api/actions/zones?actionKey=${selectedActionKey}")
+                    val obj = json.parseToJsonElement(resp).jsonObject
+                    val list = obj["zones"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+                    withContext(Dispatchers.Main) { zones = list.distinct() }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ Zones: ${e.message}") }
+                } finally {
+                    withContext(Dispatchers.Main) { zonesLoading = false }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(selectedActionKey) { reloadZones() }
+
+    val zoneOptions = remember(zones) { listOf("__global__") + zones }
 
     val zoneMessagesData = remember(messagesData, selectedZone, selectedActionKey) {
         if (selectedZone == "__global__") {
@@ -2826,6 +3058,16 @@ private fun ActionMessagesTab(
     var showAddFail by remember { mutableStateOf(false) }
     var newMessage by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+
+    // Zone management UI state
+    var showAddZoneDialog by remember { mutableStateOf(false) }
+    var newZoneName by remember { mutableStateOf("") }
+    var showRenameZoneDialog by remember { mutableStateOf(false) }
+    var renameFrom by remember { mutableStateOf("") }
+    var renameTo by remember { mutableStateOf("") }
+    var showDeleteZoneDialog by remember { mutableStateOf(false) }
+    var deleteZoneName by remember { mutableStateOf("") }
+    var zoneBusy by remember { mutableStateOf(false) }
     
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -2916,6 +3158,39 @@ private fun ActionMessagesTab(
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = { showAddZoneDialog = true },
+                            enabled = !zoneBusy,
+                            modifier = Modifier.weight(1f)
+                        ) { Text("➕ Zone") }
+                        OutlinedButton(
+                            onClick = {
+                                if (selectedZone != "__global__") {
+                                    renameFrom = selectedZone
+                                    renameTo = selectedZone
+                                    showRenameZoneDialog = true
+                                }
+                            },
+                            enabled = !zoneBusy && selectedZone != "__global__",
+                            modifier = Modifier.weight(1f)
+                        ) { Text("✏️ Renommer") }
+                        OutlinedButton(
+                            onClick = {
+                                if (selectedZone != "__global__") {
+                                    deleteZoneName = selectedZone
+                                    showDeleteZoneDialog = true
+                                }
+                            },
+                            enabled = !zoneBusy && selectedZone != "__global__",
+                            modifier = Modifier.weight(1f)
+                        ) { Text("🗑️ Supprimer") }
+                    }
+                    if (zonesLoading) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Chargement des zones…", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
@@ -3154,6 +3429,166 @@ private fun ActionMessagesTab(
                 }
             }
         }
+    }
+
+    // Zone dialogs
+    if (showAddZoneDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddZoneDialog = false },
+            title = { Text("Ajouter une zone") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newZoneName,
+                        onValueChange = { newZoneName = it },
+                        label = { Text("Nom de zone (ex: poitrine)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val z = newZoneName.trim()
+                        if (z.isBlank()) return@Button
+                        scope.launch {
+                            zoneBusy = true
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val body = buildJsonObject {
+                                        put("actionKey", selectedActionKey)
+                                        put("op", "add")
+                                        put("zone", z)
+                                    }
+                                    api.postJson("/api/actions/zones", json.encodeToString(JsonObject.serializer(), body))
+                                    withContext(Dispatchers.Main) {
+                                        zones = (zones + z).distinct()
+                                        selectedZone = z
+                                        snackbar.showSnackbar("✅ Zone ajoutée")
+                                        showAddZoneDialog = false
+                                        newZoneName = ""
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ ${e.message}") }
+                                } finally {
+                                    withContext(Dispatchers.Main) { zoneBusy = false }
+                                }
+                            }
+                        }
+                    },
+                    enabled = newZoneName.trim().isNotBlank() && !zoneBusy
+                ) { Text("Ajouter") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddZoneDialog = false }) { Text("Annuler") }
+            }
+        )
+    }
+
+    if (showRenameZoneDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameZoneDialog = false },
+            title = { Text("Renommer une zone") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameFrom,
+                        onValueChange = {},
+                        enabled = false,
+                        label = { Text("Ancien nom") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = renameTo,
+                        onValueChange = { renameTo = it },
+                        label = { Text("Nouveau nom") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val from = renameFrom.trim()
+                        val to = renameTo.trim()
+                        if (from.isBlank() || to.isBlank()) return@Button
+                        scope.launch {
+                            zoneBusy = true
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val body = buildJsonObject {
+                                        put("actionKey", selectedActionKey)
+                                        put("op", "rename")
+                                        put("from", from)
+                                        put("to", to)
+                                    }
+                                    api.postJson("/api/actions/zones", json.encodeToString(JsonObject.serializer(), body))
+                                    withContext(Dispatchers.Main) {
+                                        zones = zones.map { if (it == from) to else it }.distinct()
+                                        if (selectedZone == from) selectedZone = to
+                                        snackbar.showSnackbar("✅ Zone renommée")
+                                        showRenameZoneDialog = false
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ ${e.message}") }
+                                } finally {
+                                    withContext(Dispatchers.Main) { zoneBusy = false }
+                                }
+                            }
+                        }
+                    },
+                    enabled = renameTo.trim().isNotBlank() && !zoneBusy
+                ) { Text("Renommer") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameZoneDialog = false }) { Text("Annuler") }
+            }
+        )
+    }
+
+    if (showDeleteZoneDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteZoneDialog = false },
+            title = { Text("Supprimer la zone") },
+            text = { Text("Supprimer la zone \"$deleteZoneName\" ? Les messages associés seront supprimés.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val z = deleteZoneName.trim()
+                        if (z.isBlank()) return@Button
+                        scope.launch {
+                            zoneBusy = true
+                            withContext(Dispatchers.IO) {
+                                try {
+                                    val body = buildJsonObject {
+                                        put("actionKey", selectedActionKey)
+                                        put("op", "delete")
+                                        put("zone", z)
+                                    }
+                                    api.postJson("/api/actions/zones", json.encodeToString(JsonObject.serializer(), body))
+                                    withContext(Dispatchers.Main) {
+                                        zones = zones.filter { it != z }
+                                        if (selectedZone == z) selectedZone = "__global__"
+                                        snackbar.showSnackbar("✅ Zone supprimée")
+                                        showDeleteZoneDialog = false
+                                    }
+                                } catch (e: Exception) {
+                                    withContext(Dispatchers.Main) { snackbar.showSnackbar("❌ ${e.message}") }
+                                } finally {
+                                    withContext(Dispatchers.Main) { zoneBusy = false }
+                                }
+                            }
+                        }
+                    },
+                    enabled = !zoneBusy
+                ) { Text("Supprimer") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteZoneDialog = false }) { Text("Annuler") } }
+        )
     }
 }
 
