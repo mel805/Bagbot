@@ -1,0 +1,75 @@
+════════════════════════════════════════════════════════════════════════════════
+🎉🎉🎉 NARUTO AI CHAT v1.1.0 - CLAVIER CORRIGÉ + IMAGES! 🎉🎉🎉
+════════════════════════════════════════════════════════════════════════════════
+
+✅ PROBLÈMES RÉSOLUS:
+- ✅ Clavier fonctionne maintenant dans les conversations!
+- 📸 Images réalistes pour tous les 13 personnages!
+- 🎨 Interface améliorée avec vraies photos
+
+════════════════════════════════════════════════════════════════════════════════
+📱 TÉLÉCHARGER L'APK v1.1.0
+════════════════════════════════════════════════════════════════════════════════
+
+🔗 PAGE DE LA RELEASE:
+https://github.com/mel805/naruto-ai-chat/releases/tag/v1.1.0
+
+⬇️ LIEN DIRECT POUR TÉLÉCHARGER L'APK:
+https://github.com/mel805/naruto-ai-chat/releases/download/v1.1.0/Naruto-AI-Chat-v1.1.0.apk
+
+════════════════════════════════════════════════════════════════════════════════
+✅ CORRECTIONS APPORTÉES
+════════════════════════════════════════════════════════════════════════════════
+
+1. ⌨️ CLAVIER FONCTIONNEL:
+   - TextField corrigé avec KeyboardOptions
+   - KeyboardActions ajouté
+   - Support ImeAction.Send (envoyer depuis le clavier)
+   - Plus possible de taper dans les conversations!
+
+2. 📸 IMAGES DES PERSONNAGES:
+   - Photos réalistes pour Naruto, Sasuke, Sakura, Kakashi, Hinata, Itachi
+   - Photos réalistes pour Brad Pitt, Leo DiCaprio, The Rock
+   - Photos réalistes pour Scarlett, Margot, Emma, Zendaya
+   - Cartes visuelles 80x80dp avec coins arrondis
+   - Chargement avec Coil (bibliothèque d'images)
+
+════════════════════════════════════════════════════════════════════════════════
+📱 INSTALLATION
+════════════════════════════════════════════════════════════════════════════════
+
+1. Télécharger l'APK v1.1.0 (11 MB)
+2. Désinstaller l'ancienne version (v1.0.11) si installée
+3. Installer la nouvelle version v1.1.0
+4. Lancer l'app - Le clavier devrait fonctionner!
+
+════════════════════════════════════════════════════════════════════════════════
+✨ CARACTÉRISTIQUES
+════════════════════════════════════════════════════════════════════════════════
+
+🍜 13 personnages avec photos réalistes
+🔓 Modes SFW et NSFW
+🤖 TinyLlama 1.1B sur Freebox (88.174.155.230:11434)
+💯 100% GRATUIT & ILLIMITÉ
+🎨 Material Design 3 avec images
+⌨️ Clavier entièrement fonctionnel
+📱 APK signé et installable
+
+════════════════════════════════════════════════════════════════════════════════
+🎭 PERSONNAGES
+════════════════════════════════════════════════════════════════════════════════
+
+Naruto: Naruto, Sasuke, Sakura, Kakashi, Hinata, Itachi
+Célébrités: Brad Pitt, Leo, The Rock, Scarlett, Margot, Emma, Zendaya
+
+════════════════════════════════════════════════════════════════════════════════
+
+Dattebayo! 🍜
+
+Les deux problèmes sont maintenant résolus:
+1. ✅ Tu peux taper dans les conversations
+2. ✅ Les personnages ont des vraies photos
+
+Teste et dis-moi si tout fonctionne bien maintenant!
+
+════════════════════════════════════════════════════════════════════════════════
