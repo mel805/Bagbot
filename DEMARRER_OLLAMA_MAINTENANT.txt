@@ -1,0 +1,130 @@
+════════════════════════════════════════════════════════════════════════════════
+🔥 DÉMARRER OLLAMA SUR PORT 33437 - À FAIRE MAINTENANT!
+════════════════════════════════════════════════════════════════════════════════
+
+⚠️ JE NE PEUX PAS ACCÉDER À TA FREEBOX (SSH TIMEOUT)
+TU DOIS EXÉCUTER CES COMMANDES TOI-MÊME!
+
+════════════════════════════════════════════════════════════════════════════════
+📋 COMMANDES À COPIER-COLLER (5 MINUTES)
+════════════════════════════════════════════════════════════════════════════════
+
+1️⃣ Ouvre un terminal sur ton PC
+
+2️⃣ Connecte-toi à ta Freebox:
+
+ssh root@88.174.155.230
+
+Mot de passe: root bagbot
+
+
+3️⃣ Copie-colle TOUTES ces lignes (en une fois):
+
+systemctl stop ollama
+mkdir -p /etc/systemd/system/ollama.service.d
+cat > /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:33437"
+EOF
+systemctl daemon-reload
+systemctl start ollama
+systemctl enable ollama
+sleep 5
+echo ""
+echo "✅ Status Ollama:"
+systemctl status ollama | head -15
+echo ""
+echo "✅ Port 33437:"
+netstat -tlnp | grep 33437
+echo ""
+echo "✅ Test API:"
+curl http://localhost:33437/api/tags
+
+
+4️⃣ Tu dois voir:
+
+● ollama.service - Ollama Service
+   Loaded: loaded
+   Active: active (running)
+
+tcp  0  0  0.0.0.0:33437  0.0.0.0:*  LISTEN
+
+{"models":[{"name":"tinyllama:latest",...}]}
+
+
+5️⃣ Si tu vois tout ça = C'EST BON!
+
+Teste depuis ton PC:
+curl http://88.174.155.230:33437/api/tags
+
+
+════════════════════════════════════════════════════════════════════════════════
+🚨 SI ÇA NE MARCHE PAS
+════════════════════════════════════════════════════════════════════════════════
+
+Option A - Réinstaller Ollama:
+
+curl -fsSL https://ollama.com/install.sh | sh
+mkdir -p /etc/systemd/system/ollama.service.d
+cat > /etc/systemd/system/ollama.service.d/override.conf << 'EOF'
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:33437"
+EOF
+systemctl daemon-reload
+systemctl start ollama
+systemctl enable ollama
+ollama pull tinyllama
+
+
+Option B - Utiliser Groq (PLUS SIMPLE):
+
+Si tu n'arrives pas à démarrer Ollama:
+1. Va sur https://console.groq.com
+2. Crée un compte (2 minutes)
+3. Copie ta clé API
+4. Dis-moi "Utilise Groq" + la clé
+5. Je crée une version qui FONCTIONNE IMMÉDIATEMENT
+
+
+════════════════════════════════════════════════════════════════════════════════
+📱 APRÈS AVOIR DÉMARRÉ OLLAMA
+════════════════════════════════════════════════════════════════════════════════
+
+Utilise l'APK v1.3.0 (pas la v1.3.1 qui n'a pas d'APK):
+
+https://github.com/mel805/naruto-ai-chat/releases/tag/v1.3.0
+
+Télécharge: Naruto-AI-Chat-v1.3.0.apk
+
+Mais CHANGE le port dans le code:
+- Ouvre l'app
+- Si erreur "Failed to connect 11434"
+- L'app doit être mise à jour pour le port 33437
+
+Ou DIS-MOI quand Ollama est démarré sur 33437, et je rebuild l'APK!
+
+
+════════════════════════════════════════════════════════════════════════════════
+💡 RECOMMANDATION
+════════════════════════════════════════════════════════════════════════════════
+
+OPTION LA PLUS SIMPLE : GROQ API
+
+- Pas besoin de Freebox
+- Pas besoin de configuration
+- Fonctionne en 2 minutes
+- Gratuit (30 req/min)
+- Plus rapide que TinyLlama
+
+Dis juste "Utilise Groq" et je le fais!
+
+
+════════════════════════════════════════════════════════════════════════════════
+
+QUE VEUX-TU FAIRE?
+
+A) J'exécute les commandes sur ma Freebox maintenant
+B) Utilise Groq à la place (plus simple)
+C) Autre chose
+
+════════════════════════════════════════════════════════════════════════════════
