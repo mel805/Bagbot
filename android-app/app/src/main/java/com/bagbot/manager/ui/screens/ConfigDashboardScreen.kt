@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed as itemsIndexedGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -87,8 +88,29 @@ fun ConfigDashboardScreen(
     isLoading: Boolean,
     onReloadConfig: () -> Unit,
 ) {
-    var selectedTab by remember { mutableStateOf<DashTab?>(null) }
-    val tabs = remember { DashTab.entries }
+    val store = remember { com.bagbot.manager.SettingsStore.getInstance() }
+    val defaultTabs = remember { DashTab.entries.toList() }
+    val gridState = rememberLazyGridState()
+    val localScope = rememberCoroutineScope()
+
+    fun computeOrderedTabs(): List<DashTab> {
+        val order = store.getDashboardOrder()
+        if (order.isEmpty()) return defaultTabs
+        val byName = defaultTabs.associateBy { it.name }
+        val chosen = order.mapNotNull { byName[it] }.toMutableList()
+        // append missing tabs (new ones after updates)
+        for (t in defaultTabs) if (!chosen.contains(t)) chosen.add(t)
+        return chosen
+    }
+
+    var tabs by remember { mutableStateOf(computeOrderedTabs()) }
+    var selectedTab by remember {
+        val last = store.getLastDashboardTab()
+        val init = last?.let { n -> defaultTabs.firstOrNull { it.name == n } }
+        mutableStateOf<DashTab?>(init)
+    }
+    var reorderMode by remember { mutableStateOf(false) }
+    var lastSelectedIndex by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
         // Header actions
@@ -100,7 +122,12 @@ fun ConfigDashboardScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Back button when a category is selected
                 if (selectedTab != null) {
-                    IconButton(onClick = { selectedTab = null }) {
+                    IconButton(onClick = {
+                        selectedTab = null
+                        localScope.launch {
+                            try { gridState.scrollToItem(lastSelectedIndex.coerceAtLeast(0)) } catch (_: Exception) {}
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Retour", tint = Color.White)
                     }
                     Spacer(Modifier.width(8.dp))
@@ -118,8 +145,19 @@ fun ConfigDashboardScreen(
                     )
                 }
             }
-            IconButton(onClick = onReloadConfig, enabled = !isLoading) {
-                Icon(Icons.Default.Refresh, contentDescription = "Recharger", tint = Color.White)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (selectedTab == null) {
+                    IconButton(onClick = { reorderMode = !reorderMode }) {
+                        Icon(
+                            if (reorderMode) Icons.Default.Check else Icons.Default.SwapVert,
+                            contentDescription = "Réordonner",
+                            tint = Color.White
+                        )
+                    }
+                }
+                IconButton(onClick = onReloadConfig, enabled = !isLoading) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Recharger", tint = Color.White)
+                }
             }
         }
 
@@ -138,12 +176,41 @@ fun ConfigDashboardScreen(
                 contentPadding = PaddingValues(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                state = gridState
             ) {
-                itemsIndexedGrid(tabs) { _, tab ->
+                itemsIndexedGrid(tabs) { index, tab ->
                     CategoryCard(
                         label = tab.label,
-                        onClick = { selectedTab = tab }
+                        onClick = {
+                            if (reorderMode) return@CategoryCard
+                            selectedTab = tab
+                            store.setLastDashboardTab(tab.name)
+                            lastSelectedIndex = index
+                        },
+                        showReorderControls = reorderMode,
+                        onMoveUp = if (index > 0) {
+                            {
+                                val newList = tabs.toMutableList()
+                                val tmp = newList[index - 1]
+                                newList[index - 1] = newList[index]
+                                newList[index] = tmp
+                                tabs = newList
+                                store.setDashboardOrder(newList.map { it.name })
+                                lastSelectedIndex = index - 1
+                            }
+                        } else null,
+                        onMoveDown = if (index < tabs.lastIndex) {
+                            {
+                                val newList = tabs.toMutableList()
+                                val tmp = newList[index + 1]
+                                newList[index + 1] = newList[index]
+                                newList[index] = tmp
+                                tabs = newList
+                                store.setDashboardOrder(newList.map { it.name })
+                                lastSelectedIndex = index + 1
+                            }
+                        } else null
                     )
                 }
             }
@@ -180,7 +247,10 @@ fun ConfigDashboardScreen(
 @Composable
 private fun CategoryCard(
     label: String,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    showReorderControls: Boolean = false,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
 ) {
     val icon = when (label) {
         "🏠 Dashboard" -> Icons.Default.Dashboard
@@ -249,6 +319,28 @@ private fun CategoryCard(
                 .background(gradient)
                 .padding(16.dp)
         ) {
+            if (showReorderControls) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopEnd),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    IconButton(
+                        onClick = { onMoveUp?.invoke() },
+                        enabled = onMoveUp != null,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Monter", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = { onMoveDown?.invoke() },
+                        enabled = onMoveDown != null,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Descendre", tint = Color.White)
+                    }
+                }
+            }
+
             // Logo texte (watermark) au centre
             Text(
                 text = "BAG",
@@ -1558,158 +1650,156 @@ private fun EconomyConfigTab(
                         }
                     }
                     
-                    // Shop modifiers
-                    if (selectedKarmaTab == 0) {
-                        item {
-                            Text("🛒 Modificateurs Boutique", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${shopMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    editingType = "shop"
-                                    editingIndex = null
-                                    editName = ""
-                                    editDescription = ""
-                                    editCondition = ""
-                                    editPercent = "0"
-                                    editMoney = "0"
-                                    showEditDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("➕ Ajouter un modificateur boutique") }
-                        }
-                        itemsIndexed(shopMods) { i, m ->
-                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                        Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                editingType = "shop"
-                                                editingIndex = i
-                                                editName = m.str("name") ?: ""
-                                                editDescription = m.str("description") ?: ""
-                                                editCondition = m.str("condition") ?: ""
-                                                editPercent = (m.int("percent") ?: 0).toString()
-                                                showEditDialog = true
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("✏️ Modifier") }
-                                        OutlinedButton(
-                                            onClick = { shopMods.removeAt(i) },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("🗑️ Supprimer") }
+                    // Onglets Karma: utiliser un when pour éviter le recyclage de slots LazyColumn
+                    when (selectedKarmaTab) {
+                        0 -> {
+                            item {
+                                Text("🛒 Modificateurs Boutique", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                Text("${shopMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                Spacer(Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        editingType = "shop"
+                                        editingIndex = null
+                                        editName = ""
+                                        editDescription = ""
+                                        editCondition = ""
+                                        editPercent = "0"
+                                        editMoney = "0"
+                                        showEditDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("➕ Ajouter un modificateur boutique") }
+                            }
+                            itemsIndexed(shopMods, key = { i, _ -> "shop-$i" }) { i, m ->
+                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                            Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    editingType = "shop"
+                                                    editingIndex = i
+                                                    editName = m.str("name") ?: ""
+                                                    editDescription = m.str("description") ?: ""
+                                                    editCondition = m.str("condition") ?: ""
+                                                    editPercent = (m.int("percent") ?: 0).toString()
+                                                    showEditDialog = true
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("✏️ Modifier") }
+                                            OutlinedButton(
+                                                onClick = { shopMods.removeAt(i) },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("🗑️ Supprimer") }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    
-                    // Actions modifiers
-                    if (selectedKarmaTab == 1) {
-                        item {
-                            Text("🎭 Modificateurs Actions", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${actionMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    editingType = "actions"
-                                    editingIndex = null
-                                    editName = ""
-                                    editDescription = ""
-                                    editCondition = ""
-                                    editPercent = "0"
-                                    editMoney = "0"
-                                    showEditDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("➕ Ajouter un modificateur action") }
-                        }
-                        itemsIndexed(actionMods) { i, m ->
-                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                        Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                editingType = "actions"
-                                                editingIndex = i
-                                                editName = m.str("name") ?: ""
-                                                editDescription = m.str("description") ?: ""
-                                                editCondition = m.str("condition") ?: ""
-                                                editPercent = (m.int("percent") ?: 0).toString()
-                                                showEditDialog = true
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("✏️ Modifier") }
-                                        OutlinedButton(
-                                            onClick = { actionMods.removeAt(i) },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("🗑️ Supprimer") }
+                        1 -> {
+                            item {
+                                Text("🎭 Modificateurs Actions", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                Text("${actionMods.size} modificateur(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                Spacer(Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        editingType = "actions"
+                                        editingIndex = null
+                                        editName = ""
+                                        editDescription = ""
+                                        editCondition = ""
+                                        editPercent = "0"
+                                        editMoney = "0"
+                                        showEditDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("➕ Ajouter un modificateur action") }
+                            }
+                            itemsIndexed(actionMods, key = { i, _ -> "actions-$i" }) { i, m ->
+                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text(m.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Condition: ${m.str("condition")}", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                            Text("${m.int("percent") ?: 0}%", color = if ((m.int("percent") ?: 0) >= 0) Color(0xFF57F287) else Color(0xFFED4245), fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    editingType = "actions"
+                                                    editingIndex = i
+                                                    editName = m.str("name") ?: ""
+                                                    editDescription = m.str("description") ?: ""
+                                                    editCondition = m.str("condition") ?: ""
+                                                    editPercent = (m.int("percent") ?: 0).toString()
+                                                    showEditDialog = true
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("✏️ Modifier") }
+                                            OutlinedButton(
+                                                onClick = { actionMods.removeAt(i) },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("🗑️ Supprimer") }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    
-                    // Grants
-                    if (selectedKarmaTab == 2) {
-                        item {
-                            Text("🎁 Grants (Bonus seuils)", style = MaterialTheme.typography.titleMedium, color = Color.White)
-                            Text("${grants.size} grant(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = {
-                                    editingType = "grants"
-                                    editingIndex = null
-                                    editName = ""
-                                    editDescription = ""
-                                    editCondition = ""
-                                    editMoney = "0"
-                                    editPercent = "0"
-                                    showEditDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("➕ Ajouter un grant") }
-                        }
-                        itemsIndexed(grants) { i, g ->
-                            Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
-                                Column(Modifier.padding(12.dp)) {
-                                    Text(g.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
-                                    Text(g.str("description") ?: "", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
-                                    Spacer(Modifier.height(4.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text("Condition: ${g.str("condition")}", color = Color(0xFF5865F2), style = MaterialTheme.typography.bodySmall)
-                                        Text("+${g.int("money") ?: 0} $currencyName", color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        OutlinedButton(
-                                            onClick = {
-                                                editingType = "grants"
-                                                editingIndex = i
-                                                editName = g.str("name") ?: ""
-                                                editDescription = g.str("description") ?: ""
-                                                editCondition = g.str("condition") ?: ""
-                                                editMoney = (g.int("money") ?: 0).toString()
-                                                showEditDialog = true
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("✏️ Modifier") }
-                                        OutlinedButton(
-                                            onClick = { grants.removeAt(i) },
-                                            modifier = Modifier.weight(1f)
-                                        ) { Text("🗑️ Supprimer") }
+                        else -> {
+                            item {
+                                Text("🎁 Grants (Bonus seuils)", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                                Text("${grants.size} grant(s)", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                Spacer(Modifier.height(8.dp))
+                                Button(
+                                    onClick = {
+                                        editingType = "grants"
+                                        editingIndex = null
+                                        editName = ""
+                                        editDescription = ""
+                                        editCondition = ""
+                                        editMoney = "0"
+                                        editPercent = "0"
+                                        showEditDialog = true
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) { Text("➕ Ajouter un grant") }
+                            }
+                            itemsIndexed(grants, key = { i, _ -> "grants-$i" }) { i, g ->
+                                Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF2A2A2A))) {
+                                    Column(Modifier.padding(12.dp)) {
+                                        Text(g.str("name") ?: "", fontWeight = FontWeight.SemiBold, color = Color.White)
+                                        Text(g.str("description") ?: "", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
+                                        Spacer(Modifier.height(4.dp))
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text("Condition: ${g.str("condition")}", color = Color(0xFF5865F2), style = MaterialTheme.typography.bodySmall)
+                                            Text("+${g.int("money") ?: 0} $currencyName", color = Color(0xFF57F287), fontWeight = FontWeight.Bold)
+                                        }
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            OutlinedButton(
+                                                onClick = {
+                                                    editingType = "grants"
+                                                    editingIndex = i
+                                                    editName = g.str("name") ?: ""
+                                                    editDescription = g.str("description") ?: ""
+                                                    editCondition = g.str("condition") ?: ""
+                                                    editMoney = (g.int("money") ?: 0).toString()
+                                                    showEditDialog = true
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("✏️ Modifier") }
+                                            OutlinedButton(
+                                                onClick = { grants.removeAt(i) },
+                                                modifier = Modifier.weight(1f)
+                                            ) { Text("🗑️ Supprimer") }
+                                        }
                                     }
                                 }
                             }
@@ -2017,7 +2107,7 @@ private fun LevelsConfigTab(
         when (selectedSubTab) {
             0 -> {
                 // Users list
-                val levelsData = levels?.obj("data")
+                val levelsData = levels?.obj("users") ?: levels?.obj("data")
                 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(16.dp),
