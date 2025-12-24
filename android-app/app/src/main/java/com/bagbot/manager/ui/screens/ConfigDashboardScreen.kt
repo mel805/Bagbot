@@ -219,7 +219,7 @@ fun ConfigDashboardScreen(
             when (selectedTab) {
                 DashTab.Dashboard -> DashboardTab(configData, members, api, json, scope, snackbar)
                 DashTab.Economy -> EconomyConfigTab(configData, members, api, json, scope, snackbar)
-                DashTab.Levels -> LevelsConfigTab(configData, roles, api, json, scope, snackbar)
+                DashTab.Levels -> LevelsConfigTab(configData, roles, members, api, json, scope, snackbar)
                 DashTab.Booster -> BoosterConfigTab(configData, roles, api, json, scope, snackbar)
                 DashTab.Counting -> CountingConfigTab(configData, channels, api, json, scope, snackbar)
                 DashTab.TruthDare -> TruthDareConfigTab(channels, api, json, scope, snackbar)
@@ -897,32 +897,45 @@ private fun EconomyConfigTab(
             }
             1 -> {
                 // Actions - Configuration complète
-                val actionsList = eco?.obj("actions")?.obj("list")
-                val actionsKeys = remember(actionsList) {
-                    actionsList?.jsonObject?.keys?.toList()?.sorted() ?: emptyList()
+                val actionsListObj = eco?.obj("actions")?.obj("list")
+                val actionsConfigObj = eco?.obj("actions")?.obj("config")
+                val actionsEnabled = eco?.obj("actions")?.arr("enabled").safeStringList()
+
+                val actionsKeys = remember(actionsListObj, actionsConfigObj, actionsEnabled) {
+                    val keys = mutableSetOf<String>()
+                    actionsEnabled.forEach { if (it.isNotBlank()) keys.add(it) }
+                    actionsListObj?.jsonObject?.keys?.forEach { keys.add(it) }
+                    actionsConfigObj?.jsonObject?.keys?.forEach { keys.add(it) }
+                    keys.toList().sorted()
                 }
-                
-                var selectedActionKey by remember { mutableStateOf(actionsKeys.firstOrNull() ?: "") }
-                val selectedAction = remember(selectedActionKey, actionsList) {
-                    actionsList?.obj(selectedActionKey)
+
+                var selectedActionKey by remember { mutableStateOf("") }
+                LaunchedEffect(actionsKeys) {
+                    if (selectedActionKey.isBlank() || !actionsKeys.contains(selectedActionKey)) {
+                        selectedActionKey = actionsKeys.firstOrNull().orEmpty()
+                    }
                 }
+
+                val selectedList = remember(selectedActionKey, actionsListObj) { actionsListObj?.obj(selectedActionKey) }
+                val selectedCfg = remember(selectedActionKey, actionsConfigObj) { actionsConfigObj?.obj(selectedActionKey) }
                 
                 // États pour l'action sélectionnée
-                var label by remember(selectedActionKey) { mutableStateOf(selectedAction?.str("label") ?: "") }
-                var image by remember(selectedActionKey) { mutableStateOf(selectedAction?.str("image") ?: "") }
-                var moneyMin by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("moneyMin")?.toString() ?: "0") }
-                var moneyMax by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("moneyMax")?.toString() ?: "0") }
-                var karma by remember(selectedActionKey) { mutableStateOf(selectedAction?.str("karma") ?: "none") }
-                var karmaDelta by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("karmaDelta")?.toString() ?: "0") }
-                var xpDelta by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("xpDelta")?.toString() ?: "0") }
-                var successRate by remember(selectedActionKey) { mutableStateOf(selectedAction?.double("successRate")?.toString() ?: "1.0") }
-                var failMoneyMin by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("failMoneyMin")?.toString() ?: "0") }
-                var failMoneyMax by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("failMoneyMax")?.toString() ?: "0") }
-                var failKarmaDelta by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("failKarmaDelta")?.toString() ?: "0") }
-                var failXpDelta by remember(selectedActionKey) { mutableStateOf(selectedAction?.int("failXpDelta")?.toString() ?: "0") }
-                var partnerMoney by remember(selectedActionKey) { mutableStateOf(((selectedAction?.double("partnerMoneyShare") ?: 0.0) * 100).toString()) }
-                var partnerKarma by remember(selectedActionKey) { mutableStateOf(((selectedAction?.double("partnerKarmaShare") ?: 0.0) * 100).toString()) }
-                var partnerXp by remember(selectedActionKey) { mutableStateOf(((selectedAction?.double("partnerXpShare") ?: 0.0) * 100).toString()) }
+                var label by remember(selectedActionKey) { mutableStateOf(selectedList?.str("label") ?: selectedActionKey) }
+                var image by remember(selectedActionKey) { mutableStateOf(selectedList?.str("image") ?: "") }
+
+                var moneyMin by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("moneyMin")?.toString() ?: "0") }
+                var moneyMax by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("moneyMax")?.toString() ?: "0") }
+                var karma by remember(selectedActionKey) { mutableStateOf(selectedCfg?.str("karma") ?: "none") }
+                var karmaDelta by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("karmaDelta")?.toString() ?: "0") }
+                var xpDelta by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("xpDelta")?.toString() ?: "0") }
+                var successRate by remember(selectedActionKey) { mutableStateOf(selectedCfg?.double("successRate")?.toString() ?: "1.0") }
+                var failMoneyMin by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("failMoneyMin")?.toString() ?: "0") }
+                var failMoneyMax by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("failMoneyMax")?.toString() ?: "0") }
+                var failKarmaDelta by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("failKarmaDelta")?.toString() ?: "0") }
+                var failXpDelta by remember(selectedActionKey) { mutableStateOf(selectedCfg?.int("failXpDelta")?.toString() ?: "0") }
+                var partnerMoney by remember(selectedActionKey) { mutableStateOf(((selectedCfg?.double("partnerMoneyShare") ?: 0.0) * 100).toString()) }
+                var partnerKarma by remember(selectedActionKey) { mutableStateOf(((selectedCfg?.double("partnerKarmaShare") ?: 0.0) * 100).toString()) }
+                var partnerXp by remember(selectedActionKey) { mutableStateOf(((selectedCfg?.double("partnerXpShare") ?: 0.0) * 100).toString()) }
                 var cooldown by remember(selectedActionKey) { mutableStateOf(cooldowns[selectedActionKey]?.toString() ?: "0") }
                 
                 var savingAction by remember { mutableStateOf(false) }
@@ -956,7 +969,7 @@ private fun EconomyConfigTab(
                                     ) {
                                         actionsKeys.forEach { key ->
                                             androidx.compose.material3.DropdownMenuItem(
-                                                text = { Text(actionsList?.obj(key)?.str("label") ?: key) },
+                                                text = { Text(actionsListObj?.obj(key)?.str("label") ?: key) },
                                                 onClick = {
                                                     selectedActionKey = key
                                                     expanded = false
@@ -1110,8 +1123,6 @@ private fun EconomyConfigTab(
                                     withContext(Dispatchers.IO) {
                                         try {
                                             val actionData = buildJsonObject {
-                                                put("label", label)
-                                                put("image", image)
                                                 put("moneyMin", moneyMin.toIntOrNull() ?: 0)
                                                 put("moneyMax", moneyMax.toIntOrNull() ?: 0)
                                                 put("karma", karma)
@@ -1126,10 +1137,17 @@ private fun EconomyConfigTab(
                                                 put("partnerKarmaShare", (partnerKarma.toDoubleOrNull() ?: 0.0) / 100.0)
                                                 put("partnerXpShare", (partnerXp.toDoubleOrNull() ?: 0.0) / 100.0)
                                             }
+                                            val listData = buildJsonObject {
+                                                put("label", label)
+                                                put("image", image)
+                                            }
                                             
                                             val body = buildJsonObject {
                                                 put("actions", buildJsonObject {
                                                     put("list", buildJsonObject {
+                                                        put(selectedActionKey, listData)
+                                                    })
+                                                    put("config", buildJsonObject {
                                                         put(selectedActionKey, actionData)
                                                     })
                                                 })
@@ -2063,6 +2081,7 @@ private fun EconomyConfigTab(
 private fun LevelsConfigTab(
     configData: JsonObject?,
     roles: Map<String, String>,
+    members: Map<String, String>,
     api: ApiClient,
     json: Json,
     scope: kotlinx.coroutines.CoroutineScope,
@@ -2138,9 +2157,14 @@ private fun LevelsConfigTab(
                             ) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text(
-                                        "Membre ID: ${userId.takeLast(8)}",
+                                        members[userId] ?: "Membre ID: ${userId.takeLast(8)}",
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White
+                                    )
+                                    Text(
+                                        "ID: ${userId.takeLast(8)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.Gray
                                     )
                                     Spacer(Modifier.height(8.dp))
                                     Row(
